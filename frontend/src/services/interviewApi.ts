@@ -1,4 +1,4 @@
-import type { InterviewCreationResponse, InterviewSetupPayload, InterviewSessionApiResponse } from "../types/interview";
+import type { InterviewCreationResponse, InterviewSetupPayload, InterviewSessionApiResponse, InterviewStartApiResponse } from "../types/interview";
 
 const DEFAULT_BACKEND_URL = "http://127.0.0.1:8000";
 
@@ -39,4 +39,16 @@ export async function getInterviewSession(sessionId: string): Promise<InterviewS
   }
 
   return (await response.json()) as InterviewSessionApiResponse;
+}
+
+export async function startInterviewSession(sessionId: string): Promise<InterviewStartApiResponse> {
+  const response = await fetch(`${getBackendUrl()}/api/interviews/${sessionId}/start`, {
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response));
+  }
+
+  return (await response.json()) as InterviewStartApiResponse;
 }

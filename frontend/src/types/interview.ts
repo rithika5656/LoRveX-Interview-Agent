@@ -37,6 +37,32 @@ export interface InterviewSessionNavigationState {
 
 export type InterviewSessionState = InterviewSessionNavigationState;
 
+export interface InterviewPlanStage {
+  name: string;
+  focus: string;
+}
+
+export interface InterviewPlan {
+  goal: string;
+  stages: InterviewPlanStage[];
+  difficulty: Difficulty | "adaptive";
+  questionCount: number;
+}
+
+export interface InterviewQuestion {
+  id: string;
+  text: string;
+  type: InterviewType;
+  difficulty: Difficulty;
+}
+
+export interface InterviewStartApiResponse {
+  sessionId: string;
+  status: "started";
+  plan: InterviewPlan;
+  question: InterviewQuestion;
+}
+
 export interface InterviewSessionApiResponse {
   sessionId: string;
   status: "created";

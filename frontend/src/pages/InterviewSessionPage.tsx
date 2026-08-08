@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useParams } from "react-router-dom";
 import { ButtonLink } from "../components/Button";
-import { getInterviewSession } from "../services/interviewApi";
-import type { InterviewCreationResponse, InterviewSessionState } from "../types/interview";
+import { getInterviewSession, startInterviewSession } from "../services/interviewApi";
+import type { InterviewCreationResponse, InterviewSessionState, InterviewStartApiResponse } from "../types/interview";
 
 type LocationState = InterviewSessionState | undefined;
 
@@ -40,8 +40,11 @@ export function InterviewSessionPage() {
         }
       : null,
   );
+  const [sessionStartData, setSessionStartData] = useState<InterviewStartApiResponse | null>(null);
   const [loading, setLoading] = useState(Boolean(sessionId && !sessionState));
+  const [starting, setStarting] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!sessionId) {
@@ -79,6 +82,42 @@ export function InterviewSessionPage() {
       active = false;
     };
   }, [sessionId, sessionState]);
+
+  useEffect(() => {
+    if (!sessionId || !sessionData) {
+      return;
+    }
+
+    let active = true;
+
+    setStarting(true);
+    setAiError(null);
+
+    startInterviewSession(sessionId)
+      .then((response) => {
+        if (!active) {
+          return;
+        }
+
+        setSessionStartData(response);
+      })
+      .catch((error: unknown) => {
+        if (!active) {
+          return;
+        }
+
+        setAiError(error instanceof Error ? error.message : "Unable to trigger the AI interview planner.");
+      })
+      .finally(() => {
+        if (active) {
+          setStarting(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [sessionId, sessionData]);
 
   if (!sessionId) {
     return (
@@ -132,14 +171,21 @@ export function InterviewSessionPage() {
   const roleLabel = formatRoleLabel(configuration.targetRole, undefined);
   const resumeLabel = sessionState?.resumeLabel ?? "Not provided";
 
+  const question = useMemo(() => sessionStartData?.question?.text, [sessionStartData]);
+  const plan = useMemo(() => sessionStartData?.plan, [sessionStartData]);
+
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 text-slate-950 sm:px-6 lg:px-8">
       <section className="mx-auto max-w-4xl rounded-[2rem] border border-slate-200 bg-white p-8 shadow-[0_20px_60px_-34px_rgba(15,23,42,0.28)] sm:p-10">
         <p className="text-xs font-semibold uppercase tracking-[0.38em] text-slate-500">Interview session</p>
-        <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">Configuration received successfully.</h1>
-        <p className="mt-4 max-w-2xl text-base leading-8 text-slate-600">
-          AI interview engine will be connected in the next phase.
-        </p>
+        <div className="mt-4 flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">AI Interviewer</h1>
+          </div>
+          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-emerald-700">
+            {starting ? "Thinking..." : "Ready"}
+          </span>
+        </div>
 
         <div className="mt-8 grid gap-4 rounded-[1.75rem] border border-slate-200 bg-slate-50 p-6 sm:grid-cols-2">
           <div>
@@ -167,6 +213,46 @@ export function InterviewSessionPage() {
             <p className="mt-2 text-lg font-semibold text-slate-950">{resumeLabel}</p>
           </div>
         </div>
+
+        <section className="mt-8 rounded-[1.8rem] border border-slate-900/10 bg-gradient-to-br from-slate-950 to-slate-900 p-7 text-slate-50">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.36em] text-slate-400">AI Interviewer</p>
+              <p className="mt-2 text-xs font-medium uppercase tracking-[0.2em] text-emerald-300">
+                {plan ? `Plan: ${plan.stages.length} stages` : "Preparing interview"}
+              </p>
+            </div>
+            <div className="text-right text-xs font-medium uppercase tracking-[0.24em] text-slate-400">
+              {configuration.duration} min
+            </div>
+          </div>
+          <div className="mt-6">
+            {starting ? (
+              <div className="rounded-2xl border border-white/20 bg-white/5 p-5">
+                <p className="text-sm font-medium text-slate-200">Generating your first question...</p>
+              </div>
+            ) : aiError ? (
+              <div className="rounded-2xl border border-rose-300/40 bg-rose-500/10 p-5">
+                <p className="text-sm font-semibold text-rose-200">Interview engine unavailable</p>
+                <p className="mt-2 text-sm leading-7 text-rose-100/90">{aiError}</p>
+              </div>
+            ) : question ? (
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+                <p className="text-[2rem] leading-[1.13] font-semibold tracking-tight text-white">“{question}”</p>
+                <div className="mt-6 flex items-center justify-between gap-4">
+                  <span className="text-xs font-semibold uppercase tracking-[0.38em] text-slate-400">Question 01</span>
+                  <span className="rounded-full border border-white/20 px-4 py-2 text-[10px] font-bold uppercase tracking-[0.3em] text-slate-200">
+                    {sessionStartData?.question.type ?? configuration.interviewType}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-white/20 bg-white/5 p-5">
+                <p className="text-sm font-medium text-slate-200">Awaiting AI interview configuration.</p>
+              </div>
+            )}
+          </div>
+        </section>
 
         <div className="mt-8 flex justify-end">
           <ButtonLink to="/">Back to landing</ButtonLink>
