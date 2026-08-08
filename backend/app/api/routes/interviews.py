@@ -1,6 +1,12 @@
 from fastapi import APIRouter, Depends, Request
 
-from app.schemas.interview import InterviewCreateRequest, InterviewCreateResponse, InterviewStartResponse
+from app.schemas.interview import (
+    InterviewAnswerSubmissionRequest,
+    InterviewAnswerSubmissionResponse,
+    InterviewCreateRequest,
+    InterviewCreateResponse,
+    InterviewStartResponse,
+)
 from app.services.interview_service import InterviewService
 
 router = APIRouter(prefix="/interviews", tags=["interviews"])
@@ -32,3 +38,12 @@ def start_interview(
     interview_service: InterviewService = Depends(get_interview_service),
 ) -> InterviewStartResponse:
     return interview_service.start_interview(session_id)
+
+
+@router.post("/{session_id}/answer", response_model=InterviewAnswerSubmissionResponse)
+def answer_interview(
+    session_id: str,
+    payload: InterviewAnswerSubmissionRequest,
+    interview_service: InterviewService = Depends(get_interview_service),
+) -> InterviewAnswerSubmissionResponse:
+    return interview_service.submit_answer(session_id, payload)

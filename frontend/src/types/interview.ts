@@ -54,6 +54,7 @@ export interface InterviewQuestion {
   text: string;
   type: InterviewType;
   difficulty: Difficulty;
+  stage?: string;
 }
 
 export interface InterviewStartApiResponse {
@@ -67,4 +68,33 @@ export interface InterviewSessionApiResponse {
   sessionId: string;
   status: "created";
   configuration: InterviewSetupPayload;
+}
+
+export interface InterviewAnswerSubmissionRequest {
+  questionId: string;
+  answer: string;
+}
+
+export interface InterviewEvaluation {
+  questionId: string;
+  score: number;
+  assessment: string;
+  strengths: string[];
+  weaknesses: string[];
+  feedback: string;
+}
+
+export interface InterviewAnswerNextState {
+  action: "ask_question" | "clarify_answer" | "move_to_next_stage" | "finish_interview";
+  stage?: string;
+  difficulty?: Difficulty;
+  focus?: string;
+  reason?: string;
+  question?: InterviewQuestion;
+}
+
+export interface InterviewAnswerSubmissionResponse {
+  questionId: string;
+  evaluation: InterviewEvaluation;
+  next: InterviewAnswerNextState;
 }

@@ -17,6 +17,22 @@ def invalid_resume(message: str = "Invalid resume upload.") -> HTTPException:
     return api_error(400, "invalid_resume", message)
 
 
+def interview_not_started(message: str = "Interview has not been started yet.") -> HTTPException:
+    return api_error(400, "interview_not_started", message)
+
+
+def invalid_question(message: str = "Invalid question identifier.") -> HTTPException:
+    return api_error(400, "invalid_question", message)
+
+
+def empty_answer(message: str = "Answer must not be empty.") -> HTTPException:
+    return api_error(422, "empty_answer", message)
+
+
+def duplicate_answer(message: str = "This question has already been answered.") -> HTTPException:
+    return api_error(409, "duplicate_answer", message)
+
+
 def file_too_large(message: str = "Resume must be 5 MB or smaller.") -> HTTPException:
     return api_error(413, "file_too_large", message)
 

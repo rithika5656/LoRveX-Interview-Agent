@@ -27,6 +27,32 @@ class InterviewQuestion(BaseModel):
     text: str = Field(min_length=6, max_length=2400)
     type: InterviewType | str = "technical"
     difficulty: Difficulty | str = "medium"
+    stage: str = Field(default="technical", min_length=1, max_length=80)
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+AdaptiveDecisionAction = Literal["ask_question", "clarify_answer", "move_to_next_stage", "finish_interview"]
+
+
+class InterviewAdaptiveDecision(BaseModel):
+    action: AdaptiveDecisionAction = "ask_question"
+    stage: str = Field(default="technical", min_length=1, max_length=80)
+    difficulty: Difficulty | str = "medium"
+    focus: str = Field(min_length=1, max_length=240)
+    reason: str = Field(min_length=1, max_length=500)
+    question_instruction: str = Field(default="", min_length=1, max_length=1000)
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class InterviewAnswerNextState(BaseModel):
+    action: AdaptiveDecisionAction = "ask_question"
+    stage: str | None = Field(default=None, min_length=1, max_length=80)
+    difficulty: Difficulty | str | None = None
+    focus: str | None = Field(default=None, min_length=1, max_length=240)
+    reason: str | None = Field(default=None, min_length=1, max_length=500)
+    question: InterviewQuestion | None = None
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -72,6 +98,56 @@ class InterviewStartResponse(BaseModel):
     status: Literal["started"] = "started"
     plan: InterviewPlan
     question: InterviewQuestion
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class InterviewAnswer(BaseModel):
+    question_id: str = Field(alias="questionId")
+    text: str = Field(min_length=1, max_length=10000)
+    submitted_at: str = Field(default_factory=lambda: "")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class InterviewEvaluation(BaseModel):
+    question_id: str = Field(alias="questionId")
+    score: int = Field(default=80, ge=0, le=100)
+    assessment: str = Field(min_length=1, max_length=80)
+    strengths: list[str] = Field(default_factory=list)
+    weaknesses: list[str] = Field(default_factory=list)
+    feedback: str = Field(min_length=4, max_length=4000)
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class InterviewAnswerSubmissionRequest(BaseModel):
+    question_id: str = Field(alias="questionId", min_length=1, max_length=160)
+    answer: str = Field(min_length=1, max_length=10000)
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class InterviewAnswerSubmissionResponse(BaseModel):
+    question_id: str = Field(alias="questionId")
+    evaluation: InterviewEvaluation
+    next: InterviewAnswerNextState
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class InterviewSessionRuntime(BaseModel):
+    session_id: str = Field(alias="sessionId")
+    status: Literal["created", "started", "answered", "completed"] = "created"
+    configuration: InterviewConfiguration
+    interview_plan: InterviewPlan | None = Field(alias="interviewPlan", default=None)
+    current_stage: str = Field(alias="currentStage", default="technical")
+    current_difficulty: Difficulty | str = Field(alias="currentDifficulty", default="medium")
+    current_question: InterviewQuestion | None = Field(alias="currentQuestion", default=None)
+    question_history: list[InterviewQuestion] = Field(alias="questionHistory", default_factory=list)
+    answer_history: list[InterviewAnswer] = Field(alias="answerHistory", default_factory=list)
+    evaluations: list[InterviewEvaluation] = Field(default_factory=list)
+    adaptive_decisions: list[InterviewAdaptiveDecision] = Field(alias="adaptiveDecisions", default_factory=list)
 
     model_config = ConfigDict(populate_by_name=True)
 

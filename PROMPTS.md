@@ -108,3 +108,72 @@ Implemented `/api/health`, `/api/interviews`, `/api/interviews/{session_id}`, an
 
 ### Validation Performed
 Ran the frontend production build, confirmed backend imports and route registration, started FastAPI locally, validated health, interview create/lookup, invalid interview config, invalid session, resume validation, invalid resume, oversized resume, browser CORS fetch, and the setup-to-session browser handoff.
+
+## 2026-08-08 - Phase 5
+
+### Feature
+AI providers and first-question generation
+
+### Prompt
+Inspect the existing backend and schema contracts, introduce a provider abstraction boundary for AI planning, and expose the planner through a small agent surface so the runtime can ask a provider for a plan and a first question.
+
+### Purpose
+Keep AI orchestration behind a stable interface so the service layer can stay ignorant of the model adapter details while still issuing a first question from a started interview.
+
+### Important AI Output
+Generated the provider interface, OpenAI adapter with deterministic fallback objects, interview planner agent, service-level runtime storage for `interviewPlan` and `currentQuestion`, and the API contract for `POST /api/interviews/{session_id}/start`.
+
+### Human Modifications
+Resolved provider boundary import mismatches so `InterviewPlan` and `InterviewQuestion` use the schema layer instead of a provider-only module.
+
+### Final Implementation
+Added the provider contract, OpenAI provider support, planner agent wiring, runtime write-through in `InterviewService.start_interview()`, and the frontend `startInterviewSession` page integration.
+
+### Validation Performed
+Ran the frontend production build, executed backend import smoke checks, exercised the TestClient start flow, and confirmed the start endpoint emits a structured plan plus question body.
+
+## 2026-08-08 - Phase 6
+
+### Feature
+Candidate answer submission and AI evaluation
+
+### Prompt
+Extend the existing interview lifecycle to accept a candidate answer for the active question, run it through an evaluator agent, and return a typed evaluation payload without changing the Phase 4 or Phase 5 contracts that are already stable.
+
+### Purpose
+Complete the closed-loop answer-to-feedback path while keeping the planner and first-question runtime intact.
+
+### Important AI Output
+Introduced `InterviewAnswerSubmissionRequest`, `InterviewAnswerSubmissionResponse`, `InterviewEvaluation`, `InterviewAnswer`, and the runtime answer/evaluation storage fields. The service validates the active question identifier, rejects empty or duplicate submissions, and calls an `AnswerEvaluatorAgent` that uses the provider interface to produce a structured evaluation.
+
+### Human Modifications
+Added the `POST /api/interviews/{session_id}/answer` route and the corresponding frontend `submitInterviewAnswer()` API client plus a session page textarea, submit button, and evaluation panel.
+
+### Final Implementation
+The service now stores answers and evaluations in memory, the API returns `questionId` and `evaluation`, and the page can present score, strengths, weaknesses, and feedback immediately after submission.
+
+### Validation Performed
+Ran the new backend answer-flow integration test with TestClient and confirmed that the response contains a full `evaluation` envelope. The frontend build was validated after the UI and API client contract were written.
+
+## 2026-08-08 - Phase 7
+
+### Feature
+Adaptive interview planning and next-question generation
+
+### Prompt
+Inspect the Phase 4/5/6 runtime and build a Phase 7 planning layer that decides what should happen after each evaluation. The adaptive planner must decide among explicit actions, generate the next question through the provider abstraction, and preserve current runtime status instead of creating a second store.
+
+### Purpose
+Advance from a static first-question interview into a closed-loop interview where the next question depends on the previous answer, evaluation text, score, and question history.
+
+### Important AI Output
+Created the typed adaptive decision model (`InterviewAdaptiveDecision`), the next-state response surface (`InterviewAnswerNextState`), the new `AdaptiveInterviewPlannerAgent`, and the `AIProvider` extension points for decision-making and next-question generation. These are validated against the existing `InterviewSessionRuntime` fields such as `current_stage`, `current_difficulty`, `current_question`, `question_history`, `answer_history`, `evaluations`, and `adaptive_decisions`.
+
+### Human Modifications
+Integrated the adaptive planner call into `InterviewService.submit_answer()`, kept the answer/evaluation store intact, and updated the frontend page to derive the live question from the answer response rather than from the startup payload alone.
+
+### Final Implementation
+The answer POST response now includes both the evaluation and a `next` object containing the adaptive decision. The service stores the decision and either materializes a new `current_question` or closes the interview. `finish_interview` is used as the bounded fallback when the question limit is reached.
+
+### Validation Performed
+Ran the Phase 7 backend integration tests for answer adaptation, repeat-answer protection, invalid-question rejection, and a strong/weak answer next-question envelope. The frontend production build was checked after the page consumed the new response shape.

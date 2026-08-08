@@ -1,4 +1,11 @@
-import type { InterviewCreationResponse, InterviewSetupPayload, InterviewSessionApiResponse, InterviewStartApiResponse } from "../types/interview";
+import type {
+  InterviewAnswerSubmissionRequest,
+  InterviewAnswerSubmissionResponse,
+  InterviewCreationResponse,
+  InterviewSetupPayload,
+  InterviewSessionApiResponse,
+  InterviewStartApiResponse,
+} from "../types/interview";
 
 const DEFAULT_BACKEND_URL = "http://127.0.0.1:8000";
 
@@ -51,4 +58,23 @@ export async function startInterviewSession(sessionId: string): Promise<Intervie
   }
 
   return (await response.json()) as InterviewStartApiResponse;
+}
+
+export async function submitInterviewAnswer(
+  sessionId: string,
+  payload: InterviewAnswerSubmissionRequest,
+): Promise<InterviewAnswerSubmissionResponse> {
+  const response = await fetch(`${getBackendUrl()}/api/interviews/${sessionId}/answer`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response));
+  }
+
+  return (await response.json()) as InterviewAnswerSubmissionResponse;
 }
