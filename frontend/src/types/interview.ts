@@ -14,6 +14,31 @@ export interface InterviewConfig {
   resume?: File;
 }
 
-export interface InterviewSessionState {
-  config: InterviewConfig;
+export interface InterviewSetupPayload {
+  candidateName: string;
+  targetRole: string;
+  experienceLevel: ExperienceLevel;
+  interviewType: InterviewType;
+  difficulty: Difficulty;
+  duration: InterviewDuration;
+}
+
+export interface InterviewCreationResponse {
+  sessionId: string;
+  status: "created";
+  configuration: InterviewSetupPayload;
+}
+
+export interface InterviewSessionNavigationState {
+  sessionId: string;
+  configuration: InterviewSetupPayload;
+  resumeLabel?: string | null;
+}
+
+export type InterviewSessionState = InterviewSessionNavigationState;
+
+export interface InterviewSessionApiResponse {
+  sessionId: string;
+  status: "created";
+  configuration: InterviewSetupPayload;
 }

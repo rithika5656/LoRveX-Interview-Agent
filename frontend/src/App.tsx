@@ -9,6 +9,7 @@ function App() {
       <Route path="/" element={<LandingPage />} />
       <Route path="/interview/setup" element={<InterviewSetupPage />} />
       <Route path="/interview/session" element={<InterviewSessionPage />} />
+      <Route path="/interview/session/:sessionId" element={<InterviewSessionPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

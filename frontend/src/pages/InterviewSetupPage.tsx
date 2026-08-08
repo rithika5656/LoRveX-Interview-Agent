@@ -8,7 +8,15 @@ import { ProfileStep } from "../components/setup/ProfileStep";
 import { ReviewStep } from "../components/setup/ReviewStep";
 import { ResumeUpload, validateResumeFile } from "../components/setup/ResumeUpload";
 import { SetupStepper } from "../components/setup/SetupStepper";
-import type { Difficulty, ExperienceLevel, InterviewConfig, InterviewDuration, InterviewType } from "../types/interview";
+import { createInterviewSession } from "../services/interviewApi";
+import type {
+  Difficulty,
+  ExperienceLevel,
+  InterviewConfig,
+  InterviewDuration,
+  InterviewSetupPayload,
+  InterviewType,
+} from "../types/interview";
 
 const roleOptions = [
   { value: "software-engineer", label: "Software Engineer" },
@@ -127,6 +135,8 @@ export function InterviewSetupPage() {
   const [resume, setResume] = useState<File | null>(null);
   const [resumeError, setResumeError] = useState<string | null>(null);
   const [submittedOnce, setSubmittedOnce] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
+  const [isStarting, setIsStarting] = useState(false);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -221,11 +231,38 @@ export function InterviewSetupPage() {
   const handleStartInterview = () => {
     setSubmittedOnce(true);
 
-    if (!canProceedStep1 || !canProceedStep2 || !canProceedStep3) {
+    if (!canProceedStep1 || !canProceedStep2 || !canProceedStep3 || isStarting) {
       return;
     }
 
-    navigate("/interview/session", { state: { config } });
+    const payload: InterviewSetupPayload = {
+      candidateName: candidateName.trim(),
+      targetRole: formatRoleLabel(targetRole, customRole),
+      experienceLevel: experienceLevel || "beginner",
+      interviewType: interviewType || "mixed",
+      difficulty,
+      duration,
+    };
+
+    setIsStarting(true);
+    setStartError(null);
+
+    createInterviewSession(payload)
+      .then((response) => {
+        navigate(`/interview/session/${response.sessionId}`, {
+          state: {
+            sessionId: response.sessionId,
+            configuration: response.configuration,
+            resumeLabel: resume ? `${resume.name} • Ready` : null,
+          },
+        });
+      })
+      .catch((error: unknown) => {
+        setStartError(error instanceof Error ? error.message : "Failed to start the interview session.");
+      })
+      .finally(() => {
+        setIsStarting(false);
+      });
   };
 
   const renderStep = () => {
@@ -318,12 +355,14 @@ export function InterviewSetupPage() {
                     Next
                   </Button>
                 ) : (
-                  <Button type="button" onClick={handleStartInterview} disabled={!canProceedStep1 || !canProceedStep2 || !canProceedStep3} className="w-full sm:w-auto">
-                    Start Interview
+                  <Button type="button" onClick={handleStartInterview} disabled={!canProceedStep1 || !canProceedStep2 || !canProceedStep3 || isStarting} className="w-full sm:w-auto">
+                    {isStarting ? "Starting..." : "Start Interview"}
                   </Button>
                 )}
               </div>
             </div>
+
+            {startError ? <p className="mt-4 text-sm text-rose-600">{startError}</p> : null}
           </section>
 
           <aside className="space-y-4 rounded-[2rem] border border-slate-200 bg-white p-5 shadow-[0_18px_60px_-38px_rgba(15,23,42,0.2)] sm:p-6 lg:sticky lg:top-24">

@@ -85,3 +85,26 @@ Added setup components under `frontend/src/components/setup/`, a routed session 
 
 ### Validation Performed
 Ran `npm run build`, exercised the setup flow in the browser, verified validation for empty fields, invalid PDF uploads, oversized PDF uploads, valid PDF uploads, back/next navigation, session handoff, direct `/interview/session` fallback, and mobile overflow at 390px.
+
+## 2026-08-08 - Phase 4
+
+### Feature
+FastAPI backend foundation and frontend API integration
+
+### Prompt
+Inspect the current frontend setup flow and build a clean FastAPI backend with health, interview creation/lookup, and resume validation endpoints, then connect the existing Start Interview action to the backend session API.
+
+### Purpose
+Create the first functional backend layer for InterviewX without adding AI providers or persistent storage yet.
+
+### Important AI Output
+Added a modular FastAPI app with typed schemas, in-memory session storage, resume validation, structured error responses, CORS configuration, and a frontend handoff that posts setup data before navigating to a session ID route.
+
+### Human Modifications
+Corrected the frontend router to include `/interview/session/:sessionId` after the first integration test exposed a wildcard fallback issue.
+
+### Final Implementation
+Implemented `/api/health`, `/api/interviews`, `/api/interviews/{session_id}`, and `/api/resumes/validate`, updated environment examples, wired the setup flow to POST interview configuration, and added session loading plus fallback behavior in the frontend.
+
+### Validation Performed
+Ran the frontend production build, confirmed backend imports and route registration, started FastAPI locally, validated health, interview create/lookup, invalid interview config, invalid session, resume validation, invalid resume, oversized resume, browser CORS fetch, and the setup-to-session browser handoff.
