@@ -28,6 +28,7 @@ function baseClasses(className?: string) {
   return [
     "inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-medium transition duration-200",
     "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2",
+    "disabled:pointer-events-none disabled:opacity-50 disabled:shadow-none",
     className,
   ]
     .filter(Boolean)

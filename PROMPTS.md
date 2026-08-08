@@ -62,3 +62,26 @@ Added shared design tokens, responsive navigation, hero, problem, how-it-works, 
 
 ### Validation Performed
 Ran `npm install`, `npm run build`, launched the Vite dev server, loaded the landing page in a browser, opened `/interview/setup`, and verified no horizontal overflow at mobile width.
+
+## 2026-08-08 - Phase 3
+
+### Feature
+Interview setup and candidate onboarding
+
+### Prompt
+Inspect the existing frontend and routing, then replace the `/interview/setup` placeholder with a multi-step setup flow that collects candidate profile, interview preferences, resume upload, and review details before handing off to `/interview/session`.
+
+### Purpose
+Create a polished onboarding experience that gathers all future interview configuration without implementing the AI interview engine yet.
+
+### Important AI Output
+Built a typed multi-step wizard with guarded progression, accessible selection cards, resume file validation, a reusable stepper, and a session shell that safely handles both routed and direct access.
+
+### Human Modifications
+Refined the review and session screens to show human-readable role labels instead of internal slugs.
+
+### Final Implementation
+Added setup components under `frontend/src/components/setup/`, a routed session placeholder page, a centralized `InterviewConfig` model, and navigation that preserves setup state through the session handoff.
+
+### Validation Performed
+Ran `npm run build`, exercised the setup flow in the browser, verified validation for empty fields, invalid PDF uploads, oversized PDF uploads, valid PDF uploads, back/next navigation, session handoff, direct `/interview/session` fallback, and mobile overflow at 390px.
