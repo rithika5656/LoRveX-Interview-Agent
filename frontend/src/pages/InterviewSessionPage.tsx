@@ -12,6 +12,8 @@ import type {
   InterviewApiResponse,
   InterviewCandidateRecord,
   InterviewSessionState,
+  InterviewQuestion,
+  InterviewPlan,
 } from "../types/interview";
 
 type LocationState = InterviewSessionState | undefined;
@@ -39,6 +41,10 @@ export function InterviewSessionPage() {
   const [answerError, setAnswerError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<FinalFeedback | null>(sessionState?.feedback ?? null);
   const [answerResponse, setAnswerResponse] = useState<InterviewApiResponse | null>(null);
+  const [currentQuestion, setCurrentQuestion] = useState<InterviewQuestion | null>(null);
+  const [planState, setPlanState] = useState<InterviewPlan | null>(null);
+  const [coveredDays, setCoveredDays] = useState<number[]>([]);
+  const [adaptiveMessage, setAdaptiveMessage] = useState<string | null>(null);
   const [isCompleted, setIsCompleted] = useState<boolean>(sessionState?.isCompleted ?? false);
   const [adaptiveLoading, setAdaptiveLoading] = useState(false);
   const [answeredCount, setAnsweredCount] = useState(messages.filter((item) => item.role === "candidate").length);
@@ -66,6 +72,9 @@ export function InterviewSessionPage() {
             messages: Array<{ id: string; role: "interviewer" | "candidate"; text: string }>;
             isCompleted: boolean;
             feedback: FinalFeedback | null;
+            currentQuestion?: InterviewQuestion | null;
+            plan?: InterviewPlan | null;
+            coveredDays?: number[];
           };
 
           setCandidate(parsed.candidate ?? null);
@@ -73,6 +82,9 @@ export function InterviewSessionPage() {
           setIsInterviewStarted(Boolean(parsed.messages?.length));
           setIsCompleted(Boolean(parsed.isCompleted));
           setFeedback(parsed.feedback ?? null);
+          setCurrentQuestion(parsed.currentQuestion ?? null);
+          setPlanState(parsed.plan ?? null);
+          setCoveredDays(parsed.coveredDays ?? []);
           setLoadError(null);
           return;
         }
@@ -107,12 +119,15 @@ export function InterviewSessionPage() {
         messages,
         isCompleted,
         feedback,
+        currentQuestion,
+        plan: planState,
+        coveredDays,
       };
       sessionStorage.setItem(`interview.session.${sessionId}`, JSON.stringify(payload));
     } catch (e) {
       // ignore
     }
-  }, [sessionId, candidate, messages, isCompleted, feedback]);
+  }, [sessionId, candidate, messages, isCompleted, feedback, currentQuestion, planState, coveredDays]);
 
   // media hook
   const media = useInterviewMedia();
@@ -163,6 +178,35 @@ export function InterviewSessionPage() {
       setAnsweredCount((current) => current + 1);
       setCandidateAnswer("");
       setTranscript("");
+
+      // update adaptive metadata if available
+      if (response.question) {
+        setCurrentQuestion(response.question);
+      } else if (response.next && response.next.question) {
+        setCurrentQuestion(response.next.question as unknown as InterviewQuestion);
+      }
+
+      if (response.plan) {
+        setPlanState(response.plan);
+      }
+
+      if (response.coveredDays) {
+        setCoveredDays(response.coveredDays ?? []);
+      }
+
+      // small user-facing adaptive hint
+      if (response.next && response.next.reason) {
+        const r = response.next.reason;
+        if (r.toLowerCase().includes("increase") || r.toLowerCase().includes("deeper")) {
+          setAdaptiveMessage("Your answer showed strong understanding. Let's explore this topic more deeply.");
+        } else if (r.toLowerCase().includes("clarify") || r.toLowerCase().includes("missing")) {
+          setAdaptiveMessage("Let's clarify some fundamentals before moving on.");
+        } else {
+          setAdaptiveMessage(null);
+        }
+      } else {
+        setAdaptiveMessage(null);
+      }
 
       if (response.done) {
         setIsCompleted(true);
@@ -284,29 +328,16 @@ export function InterviewSessionPage() {
         </div>
 
         <section className="mt-8 rounded-[1.8rem] border border-slate-900/10 bg-gradient-to-br from-slate-950 to-slate-900 p-7 text-slate-50">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.36em] text-slate-400">AI Interviewer</p>
-              <p className="mt-2 text-xs font-medium uppercase tracking-[0.2em] text-emerald-300">
-                Preparing interview
-              </p>
-            </div>
-            <div className="text-right text-xs font-medium uppercase tracking-[0.24em] text-slate-400">
-              Live AI session
-            </div>
-          </div>
           <div className="mt-4 flex items-center justify-between gap-4">
             <div>
-              <span className="text-[11px] font-semibold uppercase tracking-[0.34em] text-slate-400">
-                {isCompleted
-                  ? "Interview complete"
-                  : `Question ${progressCount} / 8+`}
-              </span>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.34em] text-slate-400">
+                {isCompleted ? "Interview complete" : `Question ${progressCount} of ${planState?.questionCount ?? 8}`}
+              </p>
             </div>
             <div className="h-2 w-40 overflow-hidden rounded-full bg-slate-200">
               <div
                 className="h-full rounded-full bg-emerald-400 transition-all duration-500"
-                style={{ width: `${Math.min(100, (progressCount / 8) * 100)}%` }}
+                style={{ width: `${Math.min(100, (progressCount / (planState?.questionCount ?? 8)) * 100)}%` }}
               />
             </div>
           </div>
@@ -324,15 +355,42 @@ export function InterviewSessionPage() {
               <div className="rounded-2xl border border-white/20 bg-white/5 p-5">
                 <p className="text-sm font-medium text-slate-200">Preparing your next question...</p>
               </div>
-            ) : question ? (
+            ) : question || currentQuestion ? (
               <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                <p className="text-[2rem] leading-[1.13] font-semibold tracking-tight text-white">“{question}”</p>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-[2rem] leading-[1.13] font-semibold tracking-tight text-white">“{currentQuestion?.text ?? question}”</p>
+                    {adaptiveMessage ? (
+                      <p className="mt-3 text-sm text-emerald-200">{adaptiveMessage}</p>
+                    ) : null}
+                  </div>
+                  <div className="text-right">
+                    <span className="rounded-full border border-white/20 px-4 py-2 text-[10px] font-bold uppercase tracking-[0.3em] text-slate-200">
+                      Interviewer
+                    </span>
+                  </div>
+                </div>
+
+                {/* compact metadata */}
+                {(currentQuestion?.curriculumDay || currentQuestion?.module || currentQuestion?.topic || currentQuestion?.questionType) && (
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    {currentQuestion?.curriculumDay ? (
+                      <span className="rounded bg-slate-800/30 px-3 py-1 text-xs font-semibold">Curriculum Day {currentQuestion.curriculumDay}</span>
+                    ) : null}
+                    {currentQuestion?.module ? (
+                      <span className="rounded bg-slate-800/30 px-3 py-1 text-xs">{currentQuestion.module}</span>
+                    ) : null}
+                    {currentQuestion?.topic ? (
+                      <span className="rounded bg-slate-800/30 px-3 py-1 text-xs">{currentQuestion.topic}</span>
+                    ) : null}
+                    {currentQuestion?.questionType ? (
+                      <span className="rounded bg-slate-800/30 px-3 py-1 text-xs">{currentQuestion.questionType}</span>
+                    ) : null}
+                  </div>
+                )}
                 <div className="mt-6 flex items-center justify-between gap-4">
                   <span className="text-xs font-semibold uppercase tracking-[0.38em] text-slate-400">
                     Question {Math.max(messages.filter((item) => item.role === "interviewer").length, 1).toString().padStart(2, "0")}
-                  </span>
-                  <span className="rounded-full border border-white/20 px-4 py-2 text-[10px] font-bold uppercase tracking-[0.3em] text-slate-200">
-                    Interviewer
                   </span>
                 </div>
               </div>
@@ -434,34 +492,94 @@ export function InterviewSessionPage() {
             {feedback ? (
               <section className="mt-7 rounded-[1.4rem] border border-emerald-200 bg-emerald-50 p-5">
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.34em] text-emerald-700">End-of-interview feedback</p>
-                  <div className="mt-3 text-sm leading-7 text-slate-900">{feedback.summary}</div>
-                  {feedback.strengths.length > 0 ? (
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.34em] text-emerald-700">Interview complete</p>
+                  <div className="mt-3">
+                    <div className="flex items-baseline gap-4">
+                      <div className="text-4xl font-bold text-slate-900">{feedback.overall_score ?? feedback.overallScore ?? "—"} / 100</div>
+                      <div className="text-sm text-slate-800">Overall performance</div>
+                    </div>
+                    <div className="mt-3 text-sm leading-7 text-slate-900">{feedback.interview_summary ?? feedback.summary}</div>
+                  </div>
+
+                  {/* strengths */}
+                  {(feedback.technical_strengths?.length || feedback.strengths?.length) ? (
                     <div className="mt-4">
-                      <p className="text-sm font-semibold text-slate-950">Strengths</p>
+                      <p className="text-sm font-semibold text-slate-950">Technical strengths</p>
                       <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-slate-800">
-                        {feedback.strengths.map((item) => (
+                        {(feedback.technical_strengths ?? feedback.strengths ?? []).map((item) => (
                           <li key={item}>{item}</li>
                         ))}
                       </ul>
                     </div>
                   ) : null}
-                  {feedback.gaps.length > 0 ? (
+
+                  {/* gaps */}
+                  {(feedback.knowledge_gaps?.length || feedback.gaps?.length) ? (
                     <div className="mt-4">
-                      <p className="text-sm font-semibold text-slate-950">Gaps</p>
+                      <p className="text-sm font-semibold text-slate-950">Areas to improve</p>
                       <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-slate-800">
-                        {feedback.gaps.map((item) => (
+                        {(feedback.knowledge_gaps ?? feedback.gaps ?? []).map((item) => (
                           <li key={item}>{item}</li>
                         ))}
                       </ul>
                     </div>
                   ) : null}
-                  {feedback.next.length > 0 ? (
+
+                  {/* curriculum coverage */}
+                  {feedback.curriculum_coverage || coveredDays.length > 0 ? (
                     <div className="mt-4">
-                      <p className="text-sm font-semibold text-slate-950">Next steps</p>
+                      <p className="text-sm font-semibold text-slate-950">Curriculum covered</p>
+                      <ul className="mt-2 space-y-2 pl-0 text-sm text-slate-800">
+                        {coveredDays.length > 0 ? (
+                          coveredDays.map((d) => (
+                            <li key={d}>Day {d}</li>
+                          ))
+                        ) : (
+                          Object.keys(feedback.curriculum_coverage ?? {}).map((k) => (
+                            <li key={k}>Day {k} — {feedback.curriculum_coverage ? (feedback.curriculum_coverage as any)[k] : "covered"}</li>
+                          ))
+                        )}
+                      </ul>
+                    </div>
+                  ) : null}
+
+                  {/* assessments */}
+                  {(feedback.communication_assessment || feedback.problem_solving_assessment || feedback.engineering_depth) && (
+                    <div className="mt-4 grid gap-4 sm:grid-cols-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-950">Communication</p>
+                        <div className="mt-1 text-sm text-slate-800">{feedback.communication_assessment}</div>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-slate-950">Problem solving</p>
+                        <div className="mt-1 text-sm text-slate-800">{feedback.problem_solving_assessment}</div>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-slate-950">Engineering depth</p>
+                        <div className="mt-1 text-sm text-slate-800">{feedback.engineering_depth}</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* recommendations */}
+                  {feedback.recommendations?.length ? (
+                    <div className="mt-4">
+                      <p className="text-sm font-semibold text-slate-950">Recommended next steps</p>
+                      <ol className="mt-2 list-decimal space-y-2 pl-5 text-sm text-slate-800">
+                        {feedback.recommendations.map((r, i) => (
+                          <li key={i}>{r}</li>
+                        ))}
+                      </ol>
+                    </div>
+                  ) : null}
+
+                  {/* topics to revise */}
+                  {feedback.topics_to_revise?.length ? (
+                    <div className="mt-4">
+                      <p className="text-sm font-semibold text-slate-950">Topics to revise</p>
                       <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-slate-800">
-                        {feedback.next.map((item) => (
-                          <li key={item}>{item}</li>
+                        {feedback.topics_to_revise.map((t) => (
+                          <li key={t}>{t}</li>
                         ))}
                       </ul>
                     </div>

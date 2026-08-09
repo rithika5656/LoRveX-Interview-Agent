@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     app_name: str = "InterviewX API"
     environment: str = "development"
     backend_url: str = "http://127.0.0.1:8000"
-    frontend_url: str = "http://127.0.0.1:5173"
+    frontend_url: str = "http://127.0.0.1:5173,http://127.0.0.1:5175"
     ai_api_key: str = ""
     backend_host: str = "127.0.0.1"
     backend_port: int = 8000

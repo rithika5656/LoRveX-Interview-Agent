@@ -278,6 +278,11 @@ class OpenAIProvider(AIProvider):
             text=question,
             type=configuration.interview_type,
             difficulty=configuration.difficulty,
+            curriculum_day=None,
+            module=None,
+            topic=None,
+            learning_objective=None,
+            question_type="open-ended",
         )
 
     def _fallback_evaluation(
@@ -421,12 +426,28 @@ class OpenAIProvider(AIProvider):
                     "show concrete reasoning and decision quality?"
                 )
 
+        # attempt to pick a curriculum day not yet covered
+        curriculum_day = None
+        try:
+            days = runtime.covered_days if runtime else []
+            all_days = []
+            from app.services.curriculum_service import curriculum_service
+
+            all_days = [d.get("day") for d in curriculum_service.all_days() if d.get("day")]
+            for d in all_days:
+                if d not in days:
+                    curriculum_day = d
+                    break
+        except Exception:
+            curriculum_day = None
+
         return InterviewQuestion(
             id=f"q-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}",
             text=text,
             type=configuration.interview_type,
             difficulty=decision.difficulty,
-            stage=decision.stage,
+            stage=str(curriculum_day) if curriculum_day else decision.stage,
+            curriculum_day=curriculum_day,
         )
 
     def _adaptive_decision_system_prompt(self) -> str:

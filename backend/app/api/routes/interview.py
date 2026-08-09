@@ -106,7 +106,16 @@ def interview_endpoint(payload: Dict[str, Any], request: Request):
             else:
                 raise HTTPException(status_code=500, detail="unable to create interview session")
 
-        return {"reply": "Welcome. Let's begin your interview.", "done": False}
+        runtime = svc._runtimes.get(session_id)
+        covered_days = runtime.covered_days if runtime else []
+
+        return {
+            "reply": "Welcome. Let's begin your interview.",
+            "done": False,
+            "question": start_resp.question.model_dump(by_alias=True),
+            "plan": start_resp.plan.model_dump(by_alias=True),
+            "coveredDays": covered_days,
+        }
 
     # Continue
     if "message" in payload:
@@ -135,12 +144,24 @@ def interview_endpoint(payload: Dict[str, Any], request: Request):
             done = True
             feedback_agent = FeedbackAgent()
             feedback = feedback_agent.generate_feedback(runtime)
-            return {"reply": "Interview completed.", "done": True, "feedback": feedback.model_dump(by_alias=True)}
+            return {
+                "reply": "Interview completed.",
+                "done": True,
+                "feedback": feedback.model_dump(by_alias=True),
+                "next": result.next.model_dump(by_alias=True) if result.next else None,
+                "coveredDays": runtime.covered_days,
+            }
 
         # otherwise return next question text
         next_state = result.next
         next_q = next_state.question
         reply = next_q.text if next_q else "Thank you."
-        return {"reply": reply, "done": False}
+        return {
+            "reply": reply,
+            "done": False,
+            "next": next_state.model_dump(by_alias=True) if next_state else None,
+            "question": next_q.model_dump(by_alias=True) if next_q else None,
+            "coveredDays": runtime.covered_days,
+        }
 
     raise HTTPException(status_code=400, detail="invalid payload")

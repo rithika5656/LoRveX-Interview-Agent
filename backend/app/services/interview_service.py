@@ -105,6 +105,15 @@ class InterviewService:
         runtime.current_question = question
         runtime.question_history = [question]
 
+        # record initial question's curriculum day if present
+        try:
+            if question and getattr(question, "curriculum_day", None):
+                cd = int(question.curriculum_day)
+                if cd not in runtime.covered_days:
+                    runtime.covered_days.append(cd)
+        except Exception:
+            pass
+
         return InterviewStartResponse(
             sessionId=session_id,
             status="started",
@@ -161,10 +170,15 @@ class InterviewService:
 
         runtime.adaptive_decisions.append(decision)
 
-        # update covered_days if question stage encodes a day number
+        # update covered_days using curriculum_day metadata or numeric stage
         try:
-            stage = runtime.current_question.stage if runtime.current_question else None
-            day_n = int(stage) if stage and str(stage).isdigit() else None
+            day_n = None
+            if runtime.current_question and getattr(runtime.current_question, "curriculum_day", None):
+                day_n = int(runtime.current_question.curriculum_day)
+            else:
+                stage = runtime.current_question.stage if runtime.current_question else None
+                day_n = int(stage) if stage and str(stage).isdigit() else None
+
             if day_n:
                 if day_n not in runtime.covered_days:
                     runtime.covered_days.append(day_n)
@@ -202,6 +216,14 @@ class InterviewService:
 
             runtime.current_question = next_question
             runtime.question_history.append(next_question)
+            # also record curriculum day for the next question if present
+            try:
+                if getattr(next_question, "curriculum_day", None):
+                    cd = int(next_question.curriculum_day)
+                    if cd not in runtime.covered_days:
+                        runtime.covered_days.append(cd)
+            except Exception:
+                pass
             runtime.current_difficulty = next_question.difficulty or runtime.current_difficulty
 
             next_state = InterviewAnswerNextState(

@@ -8,6 +8,9 @@ from app.core.config import settings
 from app.schemas.interview import InterviewConfiguration, InterviewPlan, InterviewPlanStage
 from app.services.curriculum_service import curriculum_service
 from app.services.candidate_service import candidate_service
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class InterviewPlannerAgent:
@@ -43,7 +46,9 @@ class InterviewPlannerAgent:
         # stages: map first modules into plan stages
         stages: List[InterviewPlanStage] = []
         for m in curriculum_service.all_modules()[:4]:
-            stages.append(InterviewPlanStage(name=m.get("title", "Module"), focus=m.get("description", "")))
+            stages.append(
+                InterviewPlanStage(name=m.get("title", "Module"), focus=m.get("description") or m.get("title", "Module"))
+            )
 
         goal = f"Assess {configuration.candidate_name} for {configuration.target_role} with curriculum focus days {chosen_days[:4]}"
 
@@ -60,8 +65,45 @@ class InterviewPlannerAgent:
     def generate_first_question(self, configuration: InterviewConfiguration, plan: InterviewPlan):
         # Delegate to provider for a well-formed question but bias by curriculum
         try:
-            return self.provider.generate_first_question(configuration, plan)
+            q = self.provider.generate_first_question(configuration, plan)
         except Exception:
-            # fallback simple question
             from app.schemas.interview import InterviewQuestion
-            return InterviewQuestion(id="q-1", text=f"Tell me about a project that demonstrates your readiness for {configuration.target_role}.", type=configuration.interview_type, difficulty=configuration.difficulty)
+
+            q = InterviewQuestion(
+                id="q-1",
+                text=f"Tell me about a project that demonstrates your readiness for {configuration.target_role}.",
+                type=configuration.interview_type,
+                difficulty=configuration.difficulty,
+            )
+
+        # attempt to attach curriculum metadata: prefer recommended topics from candidate profile
+        try:
+            profile = candidate_service.build_learning_profile(configuration.candidate_name)
+            recommended = profile.get("recommended_topics", []) if profile else []
+            chosen_day = None
+            if recommended:
+                chosen_day = recommended[0]
+            else:
+                all_days = curriculum_service.all_days()
+                if all_days:
+                    first = all_days[0]
+                    chosen_day = first.get("day")
+
+            logger.debug("planner chosen_day: %s", chosen_day)
+
+            if chosen_day:
+                try:
+                    q.curriculum_day = int(chosen_day)
+                    logger.debug("planner set curriculum_day %s", q.curriculum_day)
+                except Exception as e:
+                    logger.debug("planner failed to set curriculum_day: %s", e)
+                    q.curriculum_day = None
+                try:
+                    q.stage = str(chosen_day)
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.exception("exception while attaching curriculum metadata")
+            pass
+
+        return q

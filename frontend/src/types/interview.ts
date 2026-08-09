@@ -63,16 +63,32 @@ export interface InterviewContinueRequest {
 }
 
 export interface FinalFeedback {
-  summary: string;
-  strengths: string[];
-  gaps: string[];
-  next: string[];
+  // Phase 8 structured feedback (backend uses snake_case keys)
+  interview_summary?: string;
+  overall_score?: number;
+  technical_strengths?: string[];
+  knowledge_gaps?: string[];
+  curriculum_coverage?: Record<string, number> | number[];
+  communication_assessment?: string;
+  problem_solving_assessment?: string;
+  engineering_depth?: string;
+  recommendations?: string[];
+  topics_to_revise?: string[];
+  // legacy compatibility
+  strengths?: string[];
+  gaps?: string[];
+  next?: string[];
 }
 
 export interface InterviewApiResponse {
   reply: string;
   done: boolean;
   feedback?: FinalFeedback;
+  // optional adaptive/phase8 fields (some backends return structured next state)
+  next?: InterviewAnswerNextState;
+  question?: InterviewQuestion;
+  coveredDays?: number[];
+  plan?: InterviewPlan;
 }
 
 export interface InterviewSessionNavigationState {
@@ -103,6 +119,12 @@ export interface InterviewQuestion {
   type: InterviewType;
   difficulty: Difficulty;
   stage?: string;
+  // Phase 8 metadata
+  curriculumDay?: number | null;
+  module?: string | null;
+  topic?: string | null;
+  learningObjective?: string | null;
+  questionType?: string | null;
 }
 
 export interface InterviewStartApiResponse {

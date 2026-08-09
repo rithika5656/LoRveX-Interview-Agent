@@ -1,4 +1,4 @@
-from typing import List, Literal
+from typing import List, Literal, Dict
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -28,6 +28,11 @@ class InterviewQuestion(BaseModel):
     type: InterviewType | str = "technical"
     difficulty: Difficulty | str = "medium"
     stage: str = Field(default="technical", min_length=1, max_length=80)
+    curriculum_day: int | None = Field(alias="curriculumDay", default=None)
+    module: str | None = Field(default=None, min_length=0, max_length=120)
+    topic: str | None = Field(default=None, min_length=0, max_length=160)
+    learning_objective: str | None = Field(alias="learningObjective", default=None, min_length=0, max_length=400)
+    question_type: str | None = Field(alias="questionType", default=None, min_length=0, max_length=80)
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -161,7 +166,16 @@ class InterviewSessionRuntime(BaseModel):
 
 
 class FinalFeedback(BaseModel):
-    summary: str
+    interview_summary: str
+    overall_score: int
+    technical_strengths: List[str]
+    knowledge_gaps: List[str]
+    curriculum_coverage: Dict[str, int] | List[int]
+    communication_assessment: str
+    problem_solving_assessment: str
+    engineering_depth: str
+    recommendations: List[str]
+    topics_to_revise: List[str]
     strengths: List[str]
     gaps: List[str]
     next: List[str]

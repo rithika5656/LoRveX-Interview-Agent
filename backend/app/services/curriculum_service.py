@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-DATA_PATH = Path(__file__).resolve().parents[1] / "data" / "curriculum.json"
+DATA_PATH = Path(__file__).resolve().parents[2] / "data" / "curriculum.json"
 
 
 class CurriculumService:

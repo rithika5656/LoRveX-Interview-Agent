@@ -221,29 +221,9 @@ export function InterviewSetupPage() {
         ],
         isCompleted: response.done,
         feedback: response.feedback ?? null,
-      };
-
-      try {
-        sessionStorage.setItem(`interview.session.${sessionId}`, JSON.stringify(sessionPayload));
-      } catch (e) {
-        // ignore storage errors
-      }
-
-      navigate(`/interview/session/${sessionId}`, {
-        state: sessionPayload,
-      });
-    } catch (error: unknown) {
-      setStartError(error instanceof Error ? error.message : "Failed to start the interview session.");
-    } finally {
-      setIsStarting(false);
-    }
-  };
-
-  const renderStep = () => {
-    if (currentStep === 1) {
-      return (
-        <section className="space-y-8">
-          <div>
+          currentQuestion: response.question ?? null,
+          plan: response.plan ?? null,
+          coveredDays: response.coveredDays ?? [],
             <p className="text-xs font-semibold uppercase tracking-[0.38em] text-slate-500">Step 1</p>
             <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">Select a candidate</h2>
             <p className="mt-4 max-w-2xl text-base leading-8 text-slate-600">

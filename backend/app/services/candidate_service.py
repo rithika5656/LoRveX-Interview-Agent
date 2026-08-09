@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from ..agents import candidate_profiler
 
-DATA_PATH = Path(__file__).resolve().parents[1] / "data" / "candidates.json"
+DATA_PATH = Path(__file__).resolve().parents[2] / "data" / "candidates.json"
 
 
 class CandidateService:
