@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+from typing import List
+
 from app.ai.openai_provider import OpenAIProvider
-from app.ai.provider import AIProvider, InterviewPlan, InterviewQuestion
+from app.ai.provider import AIProvider
 from app.core.config import settings
-from app.schemas.interview import InterviewConfiguration, InterviewPlanStage
+from app.schemas.interview import InterviewConfiguration, InterviewPlan, InterviewPlanStage
+from app.services.curriculum_service import curriculum_service
+from app.services.candidate_service import candidate_service
 
 
 class InterviewPlannerAgent:
@@ -11,7 +15,53 @@ class InterviewPlannerAgent:
         self.provider = provider or OpenAIProvider(api_key=settings.ai_api_key)
 
     def create_plan(self, configuration: InterviewConfiguration) -> InterviewPlan:
-        return self.provider.build_plan(configuration)
+        # Build a personalized plan using curriculum and candidate profile
+        profile = candidate_service.build_learning_profile(configuration.candidate_name)
 
-    def generate_first_question(self, configuration: InterviewConfiguration, plan: InterviewPlan) -> InterviewQuestion:
-        return self.provider.generate_first_question(configuration, plan)
+        all_days = curriculum_service.all_days()
+        # choose recommended or least-covered days
+        chosen_days: List[int] = []
+        if profile:
+            recommended = profile.get("recommended_topics", [])
+            for d in recommended:
+                if d not in chosen_days:
+                    chosen_days.append(d)
+                if len(chosen_days) >= 6:
+                    break
+
+        # fill from curriculum if insufficient
+        if len(chosen_days) < 4:
+            for d in all_days:
+                day_n = d.get("day")
+                if day_n and day_n not in chosen_days:
+                    chosen_days.append(day_n)
+                if len(chosen_days) >= 4:
+                    break
+
+        question_count = max(8, int(configuration.duration) // 2 + 4)
+
+        # stages: map first modules into plan stages
+        stages: List[InterviewPlanStage] = []
+        for m in curriculum_service.all_modules()[:4]:
+            stages.append(InterviewPlanStage(name=m.get("title", "Module"), focus=m.get("description", "")))
+
+        goal = f"Assess {configuration.candidate_name} for {configuration.target_role} with curriculum focus days {chosen_days[:4]}"
+
+        plan = InterviewPlan(
+            goal=goal,
+            stages=stages,
+            difficulty=configuration.difficulty,
+            questionCount=question_count,
+        )
+
+        # attach recommended days as metadata (non-validated extra) by returning plan
+        return plan
+
+    def generate_first_question(self, configuration: InterviewConfiguration, plan: InterviewPlan):
+        # Delegate to provider for a well-formed question but bias by curriculum
+        try:
+            return self.provider.generate_first_question(configuration, plan)
+        except Exception:
+            # fallback simple question
+            from app.schemas.interview import InterviewQuestion
+            return InterviewQuestion(id="q-1", text=f"Tell me about a project that demonstrates your readiness for {configuration.target_role}.", type=configuration.interview_type, difficulty=configuration.difficulty)

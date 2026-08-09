@@ -33,6 +33,11 @@ class InterviewService:
         session_id = uuid4().hex
         response = InterviewCreateResponse(sessionId=session_id, configuration=configuration)
         self._sessions[session_id] = response
+        # build initial candidate profile if available
+        from app.services.candidate_service import candidate_service
+
+        candidate_profile = candidate_service.build_learning_profile(configuration.candidate_name)
+
         self._runtimes[session_id] = InterviewSessionRuntime(
             sessionId=session_id,
             status="created",
@@ -45,6 +50,8 @@ class InterviewService:
             answerHistory=[],
             evaluations=[],
             adaptiveDecisions=[],
+            candidateProfile=candidate_profile,
+            coveredDays=[],
         )
         self._created_at[session_id] = datetime.now(timezone.utc)
         return response
@@ -64,6 +71,10 @@ class InterviewService:
 
         runtime = self._runtimes.get(session_id)
         if runtime is None:
+            from app.services.candidate_service import candidate_service
+
+            candidate_profile = candidate_service.build_learning_profile(configuration.candidate_name)
+
             runtime = InterviewSessionRuntime(
                 sessionId=session_id,
                 status="created",
@@ -76,8 +87,16 @@ class InterviewService:
                 answerHistory=[],
                 evaluations=[],
                 adaptiveDecisions=[],
+                candidateProfile=candidate_profile,
+                coveredDays=[],
             )
             self._runtimes[session_id] = runtime
+
+        # ensure candidate_profile present
+        if getattr(runtime, "candidate_profile", None) is None:
+            from app.services.candidate_service import candidate_service
+
+            runtime.candidate_profile = candidate_service.build_learning_profile(configuration.candidate_name)
 
         runtime.status = "started"
         runtime.interview_plan = plan
@@ -142,7 +161,21 @@ class InterviewService:
 
         runtime.adaptive_decisions.append(decision)
 
-        if len(runtime.question_history) >= int(plan.question_count or 4):
+        # update covered_days if question stage encodes a day number
+        try:
+            stage = runtime.current_question.stage if runtime.current_question else None
+            day_n = int(stage) if stage and str(stage).isdigit() else None
+            if day_n:
+                if day_n not in runtime.covered_days:
+                    runtime.covered_days.append(day_n)
+        except Exception:
+            pass
+
+        # only finish when sufficient questions AND curriculum days covered
+        got_qs = len(runtime.question_history)
+        got_days = len(runtime.covered_days)
+        required_qs = int(plan.question_count or 8)
+        if got_qs >= required_qs and got_days >= 4:
             decision.action = "finish_interview"
 
         if decision.action == "finish_interview":
@@ -180,7 +213,11 @@ class InterviewService:
                 question=next_question,
             )
 
-        if len(runtime.question_history) >= int(plan.question_count or 4) and next_state.action != "finish_interview":
+        # finalize only when both question and curriculum day thresholds are satisfied
+        got_qs = len(runtime.question_history)
+        got_days = len(runtime.covered_days)
+        required_qs = int(plan.question_count or 8)
+        if got_qs >= required_qs and got_days >= 4 and next_state.action != "finish_interview":
             runtime.status = "completed"
             runtime.current_question = None
             next_state = InterviewAnswerNextState(action="finish_interview")

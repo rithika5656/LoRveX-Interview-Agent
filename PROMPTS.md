@@ -198,6 +198,17 @@ Added a `useInterviewMedia` hook to manage `getUserMedia` streams, a `SpeechReco
 - Speech recognition is used when available (`SpeechRecognition` / `webkitSpeechRecognition`) and falls back to a typed transcript when unsupported.
 - The transcript is editable and is used as the answer payload submitted to the existing answer API.
 
+## Agent Prompts
+
+Prompts used by backend agents are stored under `backend/app/prompts/`:
+
+- `candidate_profiler.txt` — candidate profiler prompt
+- `interview_planner.txt` — interview planner prompt
+- `interviewer.txt` — interviewer prompt
+- `answer_evaluator.txt` — answer evaluator prompt
+- `followup_agent.txt` — followup agent prompt
+- `feedback_agent.txt` — feedback agent prompt
+
 ### Validation Performed
 Manual verification steps executed locally:
 1. Started backend and frontend dev servers.

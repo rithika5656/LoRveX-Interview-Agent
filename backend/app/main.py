@@ -6,6 +6,7 @@ from fastapi.exceptions import RequestValidationError
 from app.api.routes.health import router as health_router
 from app.api.routes.interviews import router as interviews_router
 from app.api.routes.resumes import router as resumes_router
+from app.api.routes import interview as interview_router
 from app.core.config import settings
 from app.services.interview_service import InterviewService
 
@@ -23,6 +24,7 @@ app.add_middleware(
 app.include_router(health_router, prefix="/api")
 app.include_router(interviews_router, prefix="/api")
 app.include_router(resumes_router, prefix="/api")
+app.include_router(interview_router.router, prefix="/api")
 
 
 @app.exception_handler(RequestValidationError)

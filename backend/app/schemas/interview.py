@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import List, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -117,7 +117,13 @@ class InterviewEvaluation(BaseModel):
     strengths: list[str] = Field(default_factory=list)
     weaknesses: list[str] = Field(default_factory=list)
     feedback: str = Field(min_length=4, max_length=4000)
-
+    technical_accuracy: float = Field(default=0.8, ge=0.0, le=1.0)
+    depth: int = Field(default=3, ge=0, le=10)
+    reasoning: str = Field(default="", min_length=0, max_length=2000)
+    clarity: float = Field(default=0.8, ge=0.0, le=1.0)
+    gaps: list[str] = Field(default_factory=list)
+    misconceptions: list[str] = Field(default_factory=list)
+    followup_needed: bool = Field(default=False)
     model_config = ConfigDict(populate_by_name=True)
 
 
@@ -148,6 +154,17 @@ class InterviewSessionRuntime(BaseModel):
     answer_history: list[InterviewAnswer] = Field(alias="answerHistory", default_factory=list)
     evaluations: list[InterviewEvaluation] = Field(default_factory=list)
     adaptive_decisions: list[InterviewAdaptiveDecision] = Field(alias="adaptiveDecisions", default_factory=list)
+    candidate_profile: dict | None = Field(alias="candidateProfile", default=None)
+    covered_days: list[int] = Field(alias="coveredDays", default_factory=list)
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class FinalFeedback(BaseModel):
+    summary: str
+    strengths: List[str]
+    gaps: List[str]
+    next: List[str]
 
     model_config = ConfigDict(populate_by_name=True)
 

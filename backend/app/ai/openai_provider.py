@@ -322,6 +322,17 @@ class OpenAIProvider(AIProvider):
             strengths=strengths,
             weaknesses=weaknesses,
             feedback=feedback,
+            technical_accuracy=round(min(1.0, score / 100.0), 2),
+            depth=min(10, max(0, length // 10)),
+            reasoning=(
+                "The candidate provided a structured answer with examples and tradeoffs."
+                if score >= 70
+                else "The candidate's explanation lacks depth and concrete examples."
+            ),
+            clarity=round(min(1.0, 0.3 + min(0.7, length / 30.0)), 2),
+            gaps=weaknesses,
+            misconceptions=[],
+            followup_needed=(score < 75),
         )
 
     def _fallback_decision(
@@ -362,7 +373,7 @@ class OpenAIProvider(AIProvider):
                 difficulty="medium",
                 focus="final review",
                 reason="Question limit reached; finish the interview.",
-                question_instruction="",
+                question_instruction="Finish the interview and provide final feedback.",
             )
 
         return InterviewAdaptiveDecision(

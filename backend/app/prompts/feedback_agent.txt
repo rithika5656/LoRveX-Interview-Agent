@@ -1,0 +1,1 @@
+Given interview answers and evaluations, produce a JSON object: {summary, strengths[], gaps[], next[]} with concise actionable advice.
