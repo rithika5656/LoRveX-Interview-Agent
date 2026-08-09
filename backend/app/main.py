@@ -37,6 +37,8 @@ app.include_router(resumes_router, prefix="/api")
 app.include_router(interview_router.router, prefix="/api")
 
 
+from fastapi import FastAPI, Request, HTTPException
+
 @app.exception_handler(RequestValidationError)
 async def request_validation_error_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
     return JSONResponse(
@@ -51,11 +53,26 @@ async def request_validation_error_handler(_: Request, exc: RequestValidationErr
     )
 
 
+@app.exception_handler(HTTPException)
+async def http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse:
+    detail_msg = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": {
+                "code": "http_error",
+                "message": detail_msg,
+            }
+        },
+    )
+
+
 @app.exception_handler(Exception)
-async def unhandled_exception_handler(_: Request, __: Exception) -> JSONResponse:
+async def unhandled_exception_handler(_: Request, exc: Exception) -> JSONResponse:
+    print(f"[LoRveX Exception]: {exc}", flush=True)
     return JSONResponse(
         status_code=500,
-        content={"error": {"code": "internal_server_error", "message": "Something went wrong."}},
+        content={"error": {"code": "internal_server_error", "message": str(exc)}},
     )
 
 

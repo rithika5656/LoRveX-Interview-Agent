@@ -62,56 +62,35 @@ def interview_endpoint(payload: Dict[str, Any], request: Request):
             "duration": 30,
         }
 
-        # create session with the provided sessionId if not exists
-        # InterviewService.create_session generates its own sessionId, so we'll create then remap to client-provided id
-        try:
-            # build InterviewCreateRequest via direct model import to validate
-            from app.schemas.interview import InterviewCreateRequest
+        from app.schemas.interview import InterviewCreateRequest, InterviewCreateResponse, InterviewSessionRuntime
+        from app.services.candidate_service import candidate_service
 
-            cfg = InterviewCreateRequest.model_validate(create_payload)
-            created = svc.create_session(cfg)
-            # replace stored session id with provided one (allow client to supply id)
-            # copy runtime and responses under new session id
-            if session_id != created.session_id:
-                # move entries
-                svc._sessions[session_id] = svc._sessions.pop(created.session_id)
-                # set both alias and attribute names when possible
-                try:
-                    svc._sessions[session_id].session_id = session_id
-                except Exception:
-                    pass
-                try:
-                    svc._sessions[session_id].sessionId = session_id
-                except Exception:
-                    pass
-                svc._runtimes[session_id] = svc._runtimes.pop(created.session_id)
-                try:
-                    svc._runtimes[session_id].session_id = session_id
-                except Exception:
-                    pass
-                try:
-                    svc._runtimes[session_id].sessionId = session_id
-                except Exception:
-                    pass
-        except Exception:
-            # fallback: create a session normally
-            pass
+        cfg = InterviewCreateRequest.model_validate(create_payload)
+        candidate_profile = candidate_service.build_learning_profile(cfg.candidate_name)
+
+        # Initialize session and runtime directly under client-supplied session_id
+        session_resp = InterviewCreateResponse(sessionId=session_id, configuration=cfg)
+        svc._sessions[session_id] = session_resp
+
+        runtime = InterviewSessionRuntime(
+            sessionId=session_id,
+            status="created",
+            configuration=cfg,
+            interviewPlan=None,
+            currentStage="technical",
+            currentDifficulty=cfg.difficulty,
+            currentQuestion=None,
+            questionHistory=[],
+            answerHistory=[],
+            evaluations=[],
+            adaptiveDecisions=[],
+            candidateProfile=candidate_profile,
+            coveredDays=[],
+        )
+        svc._runtimes[session_id] = runtime
 
         # start the interview
-        try:
-            start_resp = svc.start_interview(session_id)
-        except Exception:
-            # attempt to start using the created session if overwrote failed
-            # find any session matching candidate name
-            # fallback: get any session
-            keys = list(svc._sessions.keys())
-            if keys:
-                sid = keys[0]
-                start_resp = svc.start_interview(sid)
-            else:
-                raise HTTPException(status_code=500, detail="unable to create interview session")
-
-        runtime = svc._runtimes.get(session_id)
+        start_resp = svc.start_interview(session_id)
         covered_days = runtime.covered_days if runtime else []
 
         return {
