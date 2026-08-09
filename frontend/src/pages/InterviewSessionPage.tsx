@@ -1,7 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { useParams } from "react-router-dom";
 import { Button, ButtonLink } from "../components/Button";
+import CameraCard from "../components/CameraCard";
+import TranscriptPanel from "../components/TranscriptPanel";
+import { useInterviewMedia } from "../hooks/useInterviewMedia";
+import { SpeechRecognitionService } from "../services/speechRecognition";
 import { getInterviewSession, startInterviewSession, submitInterviewAnswer } from "../services/interviewApi";
 import type {
   InterviewAnswerSubmissionRequest,
@@ -53,6 +57,10 @@ export function InterviewSessionPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [candidateAnswer, setCandidateAnswer] = useState("");
+  const [transcript, setTranscript] = useState("");
+  const [listening, setListening] = useState(false);
+  const [speechSupported, setSpeechSupported] = useState(false);
+  const speechRef = useRef<SpeechRecognitionService | null>(null);
   const [answerSubmitting, setAnswerSubmitting] = useState(false);
   const [answerError, setAnswerError] = useState<string | null>(null);
   const [answerResponse, setAnswerResponse] = useState<InterviewAnswerSubmissionResponse | null>(null);
@@ -139,6 +147,16 @@ export function InterviewSessionPage() {
     };
   }, [sessionId, sessionData]);
 
+  // media hook
+  const media = useInterviewMedia();
+
+  useEffect(() => {
+    setSpeechSupported(SpeechRecognitionService.isSupported());
+    if (!speechRef.current && SpeechRecognitionService.isSupported()) {
+      speechRef.current = new SpeechRecognitionService();
+    }
+  }, []);
+
   async function handleAnswerSubmit(event: React.FormEvent) {
     event.preventDefault();
 
@@ -146,7 +164,7 @@ export function InterviewSessionPage() {
       return;
     }
 
-    const trimmedAnswer = candidateAnswer.trim();
+    const trimmedAnswer = (transcript || candidateAnswer).trim();
     if (!trimmedAnswer) {
       setAnswerError("Please provide an answer before submitting.");
       return;
@@ -180,6 +198,37 @@ export function InterviewSessionPage() {
       setAnswerSubmitting(false);
       setAdaptiveLoading(false);
     }
+  }
+
+  function handleEnableMedia() {
+    media.enableMedia();
+  }
+
+  function handleAttachVideo(el: HTMLVideoElement | null) {
+    media.attachVideoElement(el);
+  }
+
+  async function startListening() {
+    if (!speechRef.current) return;
+    setListening(true);
+    try {
+      await speechRef.current.start((text, isFinal) => {
+        setTranscript(text);
+        if (isFinal) {
+          // don't auto-submit
+        }
+      });
+    } catch (e) {
+      setAnswerError("Unable to start speech recognition.");
+      setListening(false);
+    }
+  }
+
+  function stopListening() {
+    if (speechRef.current) {
+      speechRef.current.stop();
+    }
+    setListening(false);
   }
 
   if (!sessionId) {
@@ -354,28 +403,70 @@ export function InterviewSessionPage() {
             </div>
 
             <form className="mt-5" onSubmit={handleAnswerSubmit}>
-              <label className="block text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
-                Answer
-              </label>
-              <textarea
-                className="mt-3 min-h-[160px] w-full resize-y rounded-[1.2rem] border border-slate-300 bg-slate-50 px-4 py-4 text-sm leading-7 text-slate-900 shadow-sm outline-none transition focus:border-slate-950 focus:ring-2 focus:ring-slate-200"
-                value={candidateAnswer}
-                onChange={(event) => setCandidateAnswer(event.target.value)}
-                placeholder="Share your answer to the interviewer question..."
-                disabled={answerSubmitting || completed}
-              />
-
-              {answerError ? (
-                <p className="mt-3 text-sm font-medium text-rose-700">{answerError}</p>
-              ) : null}
-
-              <div className="mt-5 flex items-center justify-between gap-4">
-                <div className="text-xs font-medium uppercase tracking-[0.22em] text-slate-500">
-                  {candidateAnswer.trim().length} characters
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  {!media.mediaState.cameraEnabled && media.mediaState.cameraPermission !== "granted" ? (
+                    <div className="rounded-md border border-slate-200 bg-slate-50 p-4 text-center">
+                      {media.mediaState.cameraPermission === "denied" ? (
+                        <>
+                          <p className="text-sm font-medium text-rose-700">Camera access blocked</p>
+                          <p className="mt-2 text-xs text-slate-500">Camera access was blocked. Please allow camera permission in your browser settings and refresh.</p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-sm font-medium text-slate-700">Ready for your interview?</p>
+                          <p className="mt-2 text-xs text-slate-500">Enable camera and microphone when you're ready.</p>
+                          <div className="mt-4">
+                            <Button onClick={handleEnableMedia}>Enable Camera & Microphone</Button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    <CameraCard
+                      videoRef={handleAttachVideo}
+                      mediaState={media.mediaState}
+                      onToggleCamera={() => media.toggleCamera()}
+                      onToggleMicrophone={() => media.toggleMicrophone()}
+                      candidateName={configuration.candidateName}
+                    />
+                  )}
                 </div>
-                <Button type="submit" className="min-w-[180px]" disabled={answerSubmitting || completed}>
-                  {answerSubmitting ? "Submitting..." : "Submit answer"}
-                </Button>
+
+                <div>
+                  <TranscriptPanel transcript={transcript || candidateAnswer} listening={listening} onChange={(v) => setTranscript(v)} />
+
+                  <div className="mt-4 flex items-center gap-3">
+                    {!speechSupported ? (
+                      <div className="text-sm text-slate-600">Voice input isn't supported in this browser. You can type your answer instead.</div>
+                    ) : listening ? (
+                      <>
+                        <button type="button" onClick={stopListening} className="rounded-md bg-rose-600 px-4 py-2 text-white">⏹ Stop Speaking</button>
+                        <div className="text-sm text-slate-600">You can stop and edit your transcript before submitting.</div>
+                      </>
+                    ) : (
+                      <button type="button" onClick={startListening} className="rounded-md bg-emerald-600 px-4 py-2 text-white">🎙 Start Speaking</button>
+                    )}
+                  </div>
+
+                  {answerError ? (
+                    <p className="mt-3 text-sm font-medium text-rose-700">{answerError}</p>
+                  ) : null}
+
+                  <div className="mt-5 flex items-center justify-between gap-4">
+                    <div className="text-xs font-medium uppercase tracking-[0.22em] text-slate-500">
+                      {(transcript || candidateAnswer).trim().length} characters
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Button type="submit" className="min-w-[180px]" disabled={answerSubmitting || completed}>
+                        {answerSubmitting ? "Submitting..." : "Submit answer"}
+                      </Button>
+                      <Button type="button" className="min-w-[140px]" onClick={() => { setTranscript(""); setCandidateAnswer(""); }}>
+                        Clear
+                      </Button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </form>
 

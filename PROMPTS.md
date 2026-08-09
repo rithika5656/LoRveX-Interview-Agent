@@ -177,3 +177,51 @@ The answer POST response now includes both the evaluation and a `next` object co
 
 ### Validation Performed
 Ran the Phase 7 backend integration tests for answer adaptation, repeat-answer protection, invalid-question rejection, and a strong/weak answer next-question envelope. The frontend production build was checked after the page consumed the new response shape.
+
+## 2026-08-09 - Phase 8
+
+### Feature
+Real-time video and voice interview experience (camera + microphone + speech-to-text)
+
+### Prompt
+Upgrade the interview session UI to support live camera preview, microphone controls, speech-to-text via the browser Web Speech API, editable live transcripts, and a polished interview workspace while preserving existing interview behavior and APIs.
+
+### Purpose
+Provide a realistic interview experience where candidates can enable camera and microphone, speak naturally, review and edit the generated transcript, and submit the transcript for AI evaluation. Keep privacy-first defaults and do not upload video or raw audio.
+
+### Important AI Output
+Added a `useInterviewMedia` hook to manage `getUserMedia` streams, a `SpeechRecognitionService` wrapper to abstract the browser Web Speech API, `CameraCard` and `TranscriptPanel` UI components, and updates to the `InterviewSessionPage` to wire media controls and transcript-driven submission.
+
+### Human Modifications
+- Camera is activated only after an explicit "Enable Camera & Microphone" action.
+- Live camera preview uses a muted `<video autoPlay muted playsInline />` element and does not upload or store video.
+- Speech recognition is used when available (`SpeechRecognition` / `webkitSpeechRecognition`) and falls back to a typed transcript when unsupported.
+- The transcript is editable and is used as the answer payload submitted to the existing answer API.
+
+### Validation Performed
+Manual verification steps executed locally:
+1. Started backend and frontend dev servers.
+2. Opened the interview session, clicked "Enable Camera & Microphone", allowed permissions.
+3. Verified live camera preview appeared and indicators showed camera/microphone state.
+4. Started speech recognition, confirmed live transcript populated and updated while speaking.
+5. Stopped listening, edited transcript, and submitted answer to the existing `POST /api/interviews/{session_id}/answer` flow.
+6. Ensured camera and microphone stopped when leaving the page (unmount cleanup).
+
+### Privacy Decisions
+- Video is only used for local preview and is not uploaded or stored by the app in this phase.
+- Voice is converted to text in the browser and the transcript is submitted; raw audio is not uploaded.
+
+### Final Implementation
+Files added:
+- `frontend/src/hooks/useInterviewMedia.ts`
+- `frontend/src/services/speechRecognition.ts`
+- `frontend/src/components/CameraCard.tsx`
+- `frontend/src/components/TranscriptPanel.tsx`
+
+Files modified:
+- `frontend/src/pages/InterviewSessionPage.tsx` (wired camera, microphone, speech-to-text, and transcript UI)
+
+### Next Steps
+- Add permission error messaging improvements and accessibility labels across new UI controls.
+- Add unit and E2E tests for media flows where possible.
+
