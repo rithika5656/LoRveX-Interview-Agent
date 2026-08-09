@@ -4,10 +4,12 @@ import type {
   InterviewStartRequest,
 } from "../types/interview";
 
-const DEFAULT_BACKEND_URL = import.meta.env.DEV ? "http://127.0.0.1:8000" : "";
+const DEFAULT_API_BASE_URL = "http://127.0.0.1:8000";
 
-function getBackendUrl() {
-  return (import.meta.env.VITE_BACKEND_URL ?? DEFAULT_BACKEND_URL).replace(/\/$/, "");
+export function getApiBaseUrl(): string {
+  const envUrl = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_BACKEND_URL;
+  const baseUrl = envUrl || DEFAULT_API_BASE_URL;
+  return baseUrl.replace(/\/$/, "");
 }
 
 async function readErrorMessage(response: Response): Promise<string> {
@@ -22,7 +24,7 @@ async function readErrorMessage(response: Response): Promise<string> {
 export async function sendInterviewRequest(
   payload: InterviewStartRequest | InterviewContinueRequest,
 ): Promise<InterviewApiResponse> {
-  const response = await fetch(`${getBackendUrl()}/api/interview`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/interview`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

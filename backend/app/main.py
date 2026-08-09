@@ -24,7 +24,7 @@ app.state.interview_service = InterviewService()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.frontend_origins,
-    allow_origin_regex=r"https://.*\.vercel\.app|http://(localhost|127\.0\.0\.1)(:\d+)?",
+    allow_origin_regex=r"https://.*\.onrender\.com|https://.*\.vercel\.app|http://(localhost|127\.0\.0\.1)(:\d+)?",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
