@@ -4,7 +4,7 @@ import type {
   InterviewStartRequest,
 } from "../types/interview";
 
-const DEFAULT_BACKEND_URL = "http://127.0.0.1:8000";
+const DEFAULT_BACKEND_URL = import.meta.env.DEV ? "http://127.0.0.1:8000" : "";
 
 function getBackendUrl() {
   return (import.meta.env.VITE_BACKEND_URL ?? DEFAULT_BACKEND_URL).replace(/\/$/, "");
