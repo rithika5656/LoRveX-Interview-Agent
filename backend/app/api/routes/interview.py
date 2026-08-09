@@ -24,6 +24,11 @@ def get_interview_service(request: Request) -> InterviewService:
     return request.app.state.interview_service
 
 
+@router.options("/interview")
+def interview_options_endpoint():
+    return {}
+
+
 @router.post("/interview")
 def interview_endpoint(payload: Dict[str, Any], request: Request):
     """Single endpoint for starting and continuing interviews per technical-spec.md"""

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from typing import Any
+from uuid import uuid4
 
 from app.ai.provider import AIProvider
 from app.core.config import settings
@@ -274,11 +275,11 @@ class OpenAIProvider(AIProvider):
             f"{configuration.target_role} role?"
         )
         return InterviewQuestion(
-            id=f"q-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}",
+            id=f"q-{uuid4().hex[:12]}",
             text=question,
             type=configuration.interview_type,
             difficulty=configuration.difficulty,
-            curriculum_day=None,
+            curriculum_day=1,
             module=None,
             topic=None,
             learning_objective=None,
@@ -371,13 +372,17 @@ class OpenAIProvider(AIProvider):
             reason = "Candidate answer suggests a knowledge gap; adjust difficulty down and clarify."
             question_instruction = "Ask a simpler question that validates the missing concept directly."
 
-        if runtime and runtime.question_history and len(runtime.question_history) >= int(interview_plan.question_count or 4):
+        got_qs = len(runtime.question_history) if runtime and runtime.question_history else 0
+        got_days = len(set(runtime.covered_days)) if runtime and runtime.covered_days else 0
+        req_qs = int(interview_plan.question_count or 8)
+
+        if got_qs >= req_qs and got_days >= 4:
             return InterviewAdaptiveDecision(
                 action="finish_interview",
                 stage=stage,
                 difficulty="medium",
                 focus="final review",
-                reason="Question limit reached; finish the interview.",
+                reason="Question limit and curriculum day requirement reached; finish the interview.",
                 question_instruction="Finish the interview and provide final feedback.",
             )
 
@@ -400,37 +405,51 @@ class OpenAIProvider(AIProvider):
         decision: InterviewAdaptiveDecision,
         runtime: InterviewSessionRuntime | None = None,
     ) -> InterviewQuestion:
-        suffix = current_question.text[:100] if current_question else "your background"
+        # extract key technical terms or claims from candidate_answer if present
+        clean_ans = candidate_answer.strip()
+        key_term = ""
+        for word in clean_ans.split():
+            w = word.strip(",.!?()[]\"'")
+            if len(w) > 4 and w.lower() not in {"would", "could", "should", "about", "there", "their", "where", "which", "these", "those", "other", "using", "first"}:
+                key_term = w
+                break
+
         if decision.action == "clarify_answer":
-            text = (
-                f"You mentioned {suffix}. Can you explain that idea in a simpler way and give one concrete example?"
-            )
+            if key_term:
+                text = f"You mentioned '{key_term}' in your answer. Could you clarify how that concept applies here and explain it in simpler terms?"
+            else:
+                text = f"You mentioned {suffix}. Can you explain that idea in a simpler way and give one concrete example?"
         elif decision.action == "move_to_next_stage":
             text = f"Now let's shift to the {decision.stage or 'next'} stage. What would be a strong execution plan for {configuration.target_role}?"
         elif decision.action == "finish_interview":
             text = "Thank you. The interview is complete."
         else:
             if decision.difficulty == "hard":
-                text = (
-                    f"Given your prior answer and score {evaluation.score}, walk through a more demanding scenario for "
-                    f"{configuration.target_role}. What tradeoffs would you consider and why?"
-                )
+                if key_term:
+                    text = f"Building on your mention of '{key_term}' and score of {evaluation.score}, how would you architect this at scale for {configuration.target_role}? What tradeoffs matter most?"
+                else:
+                    text = (
+                        f"Given your prior answer and score {evaluation.score}, walk through a more demanding scenario for "
+                        f"{configuration.target_role}. What tradeoffs would you consider and why?"
+                    )
             elif decision.difficulty == "easy":
                 text = (
                     f"Let’s revisit the basics. Describe what a {configuration.target_role} should understand about a small "
                     f"system or workflow in a clear, practical way."
                 )
             else:
-                text = (
-                    f"Based on your last answer, what would you do in a practical {configuration.target_role} scenario to "
-                    "show concrete reasoning and decision quality?"
-                )
+                if key_term:
+                    text = f"Regarding your point about '{key_term}', how would you implement and test that in a production {configuration.target_role} system?"
+                else:
+                    text = (
+                        f"Based on your last answer, what would you do in a practical {configuration.target_role} scenario to "
+                        "show concrete reasoning and decision quality?"
+                    )
 
         # attempt to pick a curriculum day not yet covered
         curriculum_day = None
         try:
             days = runtime.covered_days if runtime else []
-            all_days = []
             from app.services.curriculum_service import curriculum_service
 
             all_days = [d.get("day") for d in curriculum_service.all_days() if d.get("day")]
@@ -442,7 +461,7 @@ class OpenAIProvider(AIProvider):
             curriculum_day = None
 
         return InterviewQuestion(
-            id=f"q-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}",
+            id=f"q-{uuid4().hex[:12]}",
             text=text,
             type=configuration.interview_type,
             difficulty=decision.difficulty,

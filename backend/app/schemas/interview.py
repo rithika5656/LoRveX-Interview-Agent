@@ -1,6 +1,6 @@
 from typing import List, Literal, Dict
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 ExperienceLevel = Literal["beginner", "intermediate", "advanced"]
 InterviewType = Literal["technical", "behavioral", "hr", "mixed"]
@@ -166,7 +166,8 @@ class InterviewSessionRuntime(BaseModel):
 
 
 class FinalFeedback(BaseModel):
-    interview_summary: str
+    summary: str = Field(default="")
+    interview_summary: str = Field(default="")
     overall_score: int
     technical_strengths: List[str]
     knowledge_gaps: List[str]
@@ -181,4 +182,12 @@ class FinalFeedback(BaseModel):
     next: List[str]
 
     model_config = ConfigDict(populate_by_name=True)
+
+    @model_validator(mode="after")
+    def sync_summary(self) -> "FinalFeedback":
+        if not self.summary and self.interview_summary:
+            self.summary = self.interview_summary
+        elif not self.interview_summary and self.summary:
+            self.interview_summary = self.summary
+        return self
 
