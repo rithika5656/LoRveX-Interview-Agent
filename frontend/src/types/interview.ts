@@ -23,16 +23,64 @@ export interface InterviewSetupPayload {
   duration: InterviewDuration;
 }
 
-export interface InterviewCreationResponse {
+export interface InterviewCandidateMember {
+  id: string;
+  name: string;
+  jobRole: string;
+  yearsExperience: number;
+  education: string;
+  status?: string;
+}
+
+export interface InterviewCandidateMission {
+  day: number;
+  title: string;
+  passed?: boolean;
+  skipped?: boolean;
+  attempts?: number;
+}
+
+export interface InterviewCandidateSignals {
+  commitDays: number;
+  missionsCompleted: number;
+  missionsFirstTry: number;
+}
+
+export interface InterviewCandidateRecord {
+  member: InterviewCandidateMember;
+  missions: InterviewCandidateMission[];
+  signals: InterviewCandidateSignals;
+}
+
+export interface InterviewStartRequest {
   sessionId: string;
-  status: "created";
-  configuration: InterviewSetupPayload;
+  candidate: InterviewCandidateRecord;
+}
+
+export interface InterviewContinueRequest {
+  sessionId: string;
+  message: string;
+}
+
+export interface FinalFeedback {
+  summary: string;
+  strengths: string[];
+  gaps: string[];
+  next: string[];
+}
+
+export interface InterviewApiResponse {
+  reply: string;
+  done: boolean;
+  feedback?: FinalFeedback;
 }
 
 export interface InterviewSessionNavigationState {
   sessionId: string;
-  configuration: InterviewSetupPayload;
-  resumeLabel?: string | null;
+  candidate: InterviewCandidateRecord;
+  messages: Array<{ id: string; role: "interviewer" | "candidate"; text: string }>;
+  isCompleted: boolean;
+  feedback?: FinalFeedback;
 }
 
 export type InterviewSessionState = InterviewSessionNavigationState;

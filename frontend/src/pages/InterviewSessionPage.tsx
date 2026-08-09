@@ -6,53 +6,27 @@ import CameraCard from "../components/CameraCard";
 import TranscriptPanel from "../components/TranscriptPanel";
 import { useInterviewMedia } from "../hooks/useInterviewMedia";
 import { SpeechRecognitionService } from "../services/speechRecognition";
-import { getInterviewSession, startInterviewSession, submitInterviewAnswer } from "../services/interviewApi";
+import { sendInterviewRequest } from "../services/interviewApi";
 import type {
-  InterviewAnswerSubmissionRequest,
-  InterviewAnswerSubmissionResponse,
-  InterviewCreationResponse,
-  InterviewQuestion,
+  FinalFeedback,
+  InterviewApiResponse,
+  InterviewCandidateRecord,
   InterviewSessionState,
-  InterviewStartApiResponse,
 } from "../types/interview";
 
 type LocationState = InterviewSessionState | undefined;
 
-function formatRoleLabel(targetRole: string, customRole?: string) {
-  if (targetRole === "custom") {
-    return customRole?.trim() || "Custom Role";
-  }
-
-  const labels: Record<string, string> = {
-    "software-engineer": "Software Engineer",
-    "frontend-developer": "Frontend Developer",
-    "backend-developer": "Backend Developer",
-    "full-stack-developer": "Full Stack Developer",
-    "python-developer": "Python Developer",
-    "data-analyst": "Data Analyst",
-    "data-scientist": "Data Scientist",
-    "ai-ml-engineer": "AI/ML Engineer",
-    "devops-engineer": "DevOps Engineer",
-  };
-
-  return labels[targetRole] ?? targetRole;
+function formatRoleLabel(targetRole: string) {
+  return targetRole;
 }
 
 export function InterviewSessionPage() {
   const { sessionId } = useParams();
   const location = useLocation();
   const sessionState = location.state as LocationState;
-  const [sessionData, setSessionData] = useState<InterviewCreationResponse | null>(
-    sessionState
-      ? {
-          sessionId: sessionState.sessionId,
-          status: "created",
-          configuration: sessionState.configuration,
-        }
-      : null,
-  );
-  const [sessionStartData, setSessionStartData] = useState<InterviewStartApiResponse | null>(null);
-  const [loading, setLoading] = useState(Boolean(sessionId && !sessionState));
+  const [candidate, setCandidate] = useState<InterviewCandidateRecord | null>(sessionState?.candidate ?? null);
+  const [messages, setMessages] = useState<Array<{ id: string; role: "interviewer" | "candidate"; text: string }>>(sessionState?.messages ?? []);
+  const [isInterviewStarted, setIsInterviewStarted] = useState(Boolean(sessionState?.messages?.length));
   const [starting, setStarting] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
@@ -63,89 +37,82 @@ export function InterviewSessionPage() {
   const speechRef = useRef<SpeechRecognitionService | null>(null);
   const [answerSubmitting, setAnswerSubmitting] = useState(false);
   const [answerError, setAnswerError] = useState<string | null>(null);
-  const [answerResponse, setAnswerResponse] = useState<InterviewAnswerSubmissionResponse | null>(null);
-  const [activeQuestion, setActiveQuestion] = useState<InterviewQuestion | null>(null);
+  const [feedback, setFeedback] = useState<FinalFeedback | null>(sessionState?.feedback ?? null);
+  const [answerResponse, setAnswerResponse] = useState<InterviewApiResponse | null>(null);
+  const [isCompleted, setIsCompleted] = useState<boolean>(sessionState?.isCompleted ?? false);
   const [adaptiveLoading, setAdaptiveLoading] = useState(false);
-  const [completed, setCompleted] = useState(false);
-  const [answeredCount, setAnsweredCount] = useState(0);
+  const [answeredCount, setAnsweredCount] = useState(messages.filter((item) => item.role === "candidate").length);
 
-  const question = useMemo(() => activeQuestion?.text ?? sessionStartData?.question?.text, [activeQuestion, sessionStartData]);
-  const questionId = useMemo(() => activeQuestion?.id, [activeQuestion]);
-  const plan = useMemo(() => sessionStartData?.plan, [sessionStartData]);
+  const question = useMemo(() => {
+    const lastInterviewerMessage = [...messages].reverse().find((item) => item.role === "interviewer");
+    return lastInterviewerMessage?.text ?? "";
+  }, [messages]);
+  const plan = null;
 
   useEffect(() => {
+    // restore session from sessionStorage if navigation state is missing
     if (!sessionId) {
+      setLoadError("No session id in URL. Start a new interview from setup.");
       return;
     }
 
-    let active = true;
+    if (!sessionState) {
+      try {
+        const raw = sessionStorage.getItem(`interview.session.${sessionId}`);
+        if (raw) {
+          const parsed = JSON.parse(raw) as {
+            sessionId: string;
+            candidate: InterviewCandidateRecord;
+            messages: Array<{ id: string; role: "interviewer" | "candidate"; text: string }>;
+            isCompleted: boolean;
+            feedback: FinalFeedback | null;
+          };
 
-    setLoading(true);
-    getInterviewSession(sessionId)
-      .then((response) => {
-        if (!active) {
+          setCandidate(parsed.candidate ?? null);
+          setMessages(parsed.messages ?? []);
+          setIsInterviewStarted(Boolean(parsed.messages?.length));
+          setIsCompleted(Boolean(parsed.isCompleted));
+          setFeedback(parsed.feedback ?? null);
+          setLoadError(null);
           return;
         }
+      } catch (e) {
+        // ignore parse errors
+      }
 
-        setSessionData(response);
-        setLoadError(null);
-      })
-      .catch((error: unknown) => {
-        if (!active) {
-          return;
-        }
+      setLoadError("Interview session state is missing. Start a new interview from setup.");
+      return;
+    }
 
-        if (!sessionState) {
-          setLoadError(error instanceof Error ? error.message : "Unable to load the interview session.");
-        }
-      })
-      .finally(() => {
-        if (active) {
-          setLoading(false);
-        }
-      });
+    // if we have navigation state, ensure it's saved to sessionStorage
+    try {
+      const sid = sessionState.sessionId;
+      sessionStorage.setItem(`interview.session.${sid}`, JSON.stringify(sessionState));
+    } catch (e) {
+      // ignore storage errors
+    }
 
-    return () => {
-      active = false;
-    };
-  }, [sessionId, sessionState]);
+    if (messages.length === 0 && !isInterviewStarted) {
+      setLoadError("Interview has not started yet. Return to setup and try again.");
+    }
+  }, [sessionId, sessionState, candidate, messages, isInterviewStarted]);
 
+  // persist session on changes to messages / completion
   useEffect(() => {
-    if (!sessionId || !sessionData) {
-      return;
+    if (!sessionId) return;
+    try {
+      const payload = {
+        sessionId,
+        candidate,
+        messages,
+        isCompleted,
+        feedback,
+      };
+      sessionStorage.setItem(`interview.session.${sessionId}`, JSON.stringify(payload));
+    } catch (e) {
+      // ignore
     }
-
-    let active = true;
-
-    setStarting(true);
-    setAiError(null);
-
-    startInterviewSession(sessionId)
-      .then((response) => {
-        if (!active) {
-          return;
-        }
-
-        setSessionStartData(response);
-        setActiveQuestion(response.question);
-      })
-      .catch((error: unknown) => {
-        if (!active) {
-          return;
-        }
-
-        setAiError(error instanceof Error ? error.message : "Unable to trigger the AI interview planner.");
-      })
-      .finally(() => {
-        if (active) {
-          setStarting(false);
-        }
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [sessionId, sessionData]);
+  }, [sessionId, candidate, messages, isCompleted, feedback]);
 
   // media hook
   const media = useInterviewMedia();
@@ -160,7 +127,7 @@ export function InterviewSessionPage() {
   async function handleAnswerSubmit(event: React.FormEvent) {
     event.preventDefault();
 
-    if (!sessionId || !questionId) {
+    if (!sessionId) {
       return;
     }
 
@@ -170,9 +137,9 @@ export function InterviewSessionPage() {
       return;
     }
 
-    const payload: InterviewAnswerSubmissionRequest = {
-      questionId,
-      answer: trimmedAnswer,
+    const payload = {
+      sessionId,
+      message: trimmedAnswer,
     };
 
     setAnswerSubmitting(true);
@@ -180,17 +147,26 @@ export function InterviewSessionPage() {
     setAdaptiveLoading(true);
 
     try {
-      const response = await submitInterviewAnswer(sessionId, payload);
-      setAnswerResponse(response);
-      setAnsweredCount((current) => current + 1);
+      const response: InterviewApiResponse = await sendInterviewRequest(payload);
+      const nextMessage = {
+        id: `${sessionId}-candidate-${answeredCount + 1}`,
+        role: "candidate" as const,
+        text: trimmedAnswer,
+      };
+      const interviewerMessage = {
+        id: `${sessionId}-interviewer-${messages.filter((item) => item.role === "interviewer").length + 1}`,
+        role: "interviewer" as const,
+        text: response.reply,
+      };
 
-      if (response.next.action === "finish_interview") {
-        setCompleted(true);
-        setActiveQuestion(null);
-        setCandidateAnswer("");
-      } else if (response.next.question) {
-        setActiveQuestion(response.next.question);
-        setCandidateAnswer("");
+      setMessages((prev) => [...prev, nextMessage, interviewerMessage]);
+      setAnsweredCount((current) => current + 1);
+      setCandidateAnswer("");
+      setTranscript("");
+
+      if (response.done) {
+        setIsCompleted(true);
+        setFeedback(response.feedback ?? null);
       }
     } catch (error) {
       setAnswerError(error instanceof Error ? error.message : "Unable to submit your answer.");
@@ -231,14 +207,14 @@ export function InterviewSessionPage() {
     setListening(false);
   }
 
-  if (!sessionId) {
+  if (!sessionId || !candidate) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4 text-slate-950">
         <section className="w-full max-w-2xl rounded-[2rem] border border-slate-200 bg-white p-8 text-center shadow-[0_20px_60px_-34px_rgba(15,23,42,0.28)] sm:p-10">
           <p className="text-xs font-semibold uppercase tracking-[0.38em] text-slate-500">Interview session</p>
-          <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">Configuration required</h1>
+          <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">Session unavailable</h1>
           <p className="mt-4 text-base leading-8 text-slate-600">
-            This session route expects a completed setup flow. Return to interview setup and continue from there.
+            This interview session could not be resumed. Start a new session from interview setup.
           </p>
           <div className="mt-8 flex justify-center">
             <ButtonLink to="/interview/setup">Return to Interview Setup</ButtonLink>
@@ -248,29 +224,14 @@ export function InterviewSessionPage() {
     );
   }
 
-  if (loading && !sessionData) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4 text-slate-950">
-        <section className="w-full max-w-2xl rounded-[2rem] border border-slate-200 bg-white p-8 text-center shadow-[0_20px_60px_-34px_rgba(15,23,42,0.28)] sm:p-10">
-          <p className="text-xs font-semibold uppercase tracking-[0.38em] text-slate-500">Interview session</p>
-          <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">Loading session</h1>
-          <p className="mt-4 text-base leading-8 text-slate-600">
-            InterviewX is loading your interview configuration.
-          </p>
-        </section>
-      </main>
-    );
-  }
 
-  if (!sessionData) {
+  if (loadError) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4 text-slate-950">
         <section className="w-full max-w-2xl rounded-[2rem] border border-slate-200 bg-white p-8 text-center shadow-[0_20px_60px_-34px_rgba(15,23,42,0.28)] sm:p-10">
           <p className="text-xs font-semibold uppercase tracking-[0.38em] text-slate-500">Interview session</p>
-          <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">Configuration required</h1>
-          <p className="mt-4 text-base leading-8 text-slate-600">
-            {loadError ?? "This session could not be loaded. Return to interview setup and continue from there."}
-          </p>
+          <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">Session error</h1>
+          <p className="mt-4 text-base leading-8 text-slate-600">{loadError}</p>
           <div className="mt-8 flex justify-center">
             <ButtonLink to="/interview/setup">Return to Interview Setup</ButtonLink>
           </div>
@@ -279,10 +240,8 @@ export function InterviewSessionPage() {
     );
   }
 
-  const { configuration } = sessionData;
-  const roleLabel = formatRoleLabel(configuration.targetRole, undefined);
-  const resumeLabel = sessionState?.resumeLabel ?? "Not provided";
-  const progressCount = Math.min(Math.max(answeredCount + 1, 1), plan?.questionCount ?? 1);
+  const roleLabel = formatRoleLabel(candidate.member.jobRole);
+  const progressCount = Math.max(messages.filter((item) => item.role === "interviewer").length, 1);
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 text-slate-950 sm:px-6 lg:px-8">
@@ -300,27 +259,27 @@ export function InterviewSessionPage() {
         <div className="mt-8 grid gap-4 rounded-[1.75rem] border border-slate-200 bg-slate-50 p-6 sm:grid-cols-2">
           <div>
             <p className="text-sm uppercase tracking-[0.28em] text-slate-500">Candidate</p>
-            <p className="mt-2 text-lg font-semibold text-slate-950">{configuration.candidateName}</p>
+            <p className="mt-2 text-lg font-semibold text-slate-950">{candidate.member.name}</p>
           </div>
           <div>
             <p className="text-sm uppercase tracking-[0.28em] text-slate-500">Target Role</p>
             <p className="mt-2 text-lg font-semibold text-slate-950">{roleLabel}</p>
           </div>
           <div>
-            <p className="text-sm uppercase tracking-[0.28em] text-slate-500">Interview Type</p>
-            <p className="mt-2 text-lg font-semibold text-slate-950">{configuration.interviewType}</p>
+            <p className="text-sm uppercase tracking-[0.28em] text-slate-500">Experience</p>
+            <p className="mt-2 text-lg font-semibold text-slate-950">{candidate.member.yearsExperience} years</p>
           </div>
           <div>
-            <p className="text-sm uppercase tracking-[0.28em] text-slate-500">Difficulty</p>
-            <p className="mt-2 text-lg font-semibold text-slate-950">{configuration.difficulty}</p>
+            <p className="text-sm uppercase tracking-[0.28em] text-slate-500">Education</p>
+            <p className="mt-2 text-lg font-semibold text-slate-950">{candidate.member.education}</p>
           </div>
           <div>
-            <p className="text-sm uppercase tracking-[0.28em] text-slate-500">Duration</p>
-            <p className="mt-2 text-lg font-semibold text-slate-950">{configuration.duration} minutes</p>
+            <p className="text-sm uppercase tracking-[0.28em] text-slate-500">Status</p>
+            <p className="mt-2 text-lg font-semibold text-slate-950">{candidate.member.status ?? "Active"}</p>
           </div>
           <div>
-            <p className="text-sm uppercase tracking-[0.28em] text-slate-500">Resume</p>
-            <p className="mt-2 text-lg font-semibold text-slate-950">{resumeLabel}</p>
+            <p className="text-sm uppercase tracking-[0.28em] text-slate-500">Interview</p>
+            <p className="mt-2 text-lg font-semibold text-slate-950">Live AI conversation</p>
           </div>
         </div>
 
@@ -329,30 +288,32 @@ export function InterviewSessionPage() {
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.36em] text-slate-400">AI Interviewer</p>
               <p className="mt-2 text-xs font-medium uppercase tracking-[0.2em] text-emerald-300">
-                {plan ? `Plan: ${plan.stages.length} stages` : "Preparing interview"}
+                Preparing interview
               </p>
             </div>
             <div className="text-right text-xs font-medium uppercase tracking-[0.24em] text-slate-400">
-              {configuration.duration} min
+              Live AI session
             </div>
           </div>
           <div className="mt-4 flex items-center justify-between gap-4">
             <div>
               <span className="text-[11px] font-semibold uppercase tracking-[0.34em] text-slate-400">
-                {completed ? "Interview complete" : `Question ${Math.min(answeredCount + 1, plan?.questionCount ?? 1)} of ${plan?.questionCount ?? 1}`}
+                {isCompleted
+                  ? "Interview complete"
+                  : `Question ${progressCount} / 8+`}
               </span>
             </div>
             <div className="h-2 w-40 overflow-hidden rounded-full bg-slate-200">
               <div
                 className="h-full rounded-full bg-emerald-400 transition-all duration-500"
-                style={{ width: `${Math.max(8, ((Math.min(answeredCount + 1, plan?.questionCount ?? 1) ?? 1) / (plan?.questionCount ?? 1)) * 100)}%` }}
+                style={{ width: `${Math.min(100, (progressCount / 8) * 100)}%` }}
               />
             </div>
           </div>
           <div className="mt-6">
             {starting ? (
               <div className="rounded-2xl border border-white/20 bg-white/5 p-5">
-                <p className="text-sm font-medium text-slate-200">Generating your first question...</p>
+                <p className="text-sm font-medium text-slate-200">Starting your interview...</p>
               </div>
             ) : aiError ? (
               <div className="rounded-2xl border border-rose-300/40 bg-rose-500/10 p-5">
@@ -368,14 +329,14 @@ export function InterviewSessionPage() {
                 <p className="text-[2rem] leading-[1.13] font-semibold tracking-tight text-white">“{question}”</p>
                 <div className="mt-6 flex items-center justify-between gap-4">
                   <span className="text-xs font-semibold uppercase tracking-[0.38em] text-slate-400">
-                    Question {Math.min(answeredCount + 1, plan?.questionCount ?? 1).toString().padStart(2, "0")}
+                    Question {Math.max(messages.filter((item) => item.role === "interviewer").length, 1).toString().padStart(2, "0")}
                   </span>
                   <span className="rounded-full border border-white/20 px-4 py-2 text-[10px] font-bold uppercase tracking-[0.3em] text-slate-200">
-                    {activeQuestion?.stage ?? sessionStartData?.question.type ?? configuration.interviewType}
+                    Interviewer
                   </span>
                 </div>
               </div>
-            ) : completed ? (
+            ) : isCompleted ? (
               <div className="rounded-2xl border border-emerald-300/60 bg-emerald-500/10 p-5">
                 <p className="text-sm font-semibold text-emerald-100">Interview complete</p>
                 <p className="mt-2 text-sm leading-7 text-emerald-50/90">
@@ -390,7 +351,7 @@ export function InterviewSessionPage() {
           </div>
         </section>
 
-        {sessionStartData && !completed && (
+        {!isCompleted && (
           <section className="mt-8 rounded-[1.8rem] border border-slate-200 bg-white p-6">
             <div className="flex items-center justify-between gap-4">
               <div>
@@ -398,7 +359,7 @@ export function InterviewSessionPage() {
                 <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">Your response</h2>
               </div>
               <span className="rounded-full border border-slate-200 px-4 py-2 text-[10px] font-bold uppercase tracking-[0.3em] text-slate-700">
-                {answerResponse ? "Submitted" : "Awaiting response"}
+                {answerSubmitting ? "Submitting..." : "Awaiting response"}
               </span>
             </div>
 
@@ -428,7 +389,7 @@ export function InterviewSessionPage() {
                       mediaState={media.mediaState}
                       onToggleCamera={() => media.toggleCamera()}
                       onToggleMicrophone={() => media.toggleMicrophone()}
-                      candidateName={configuration.candidateName}
+                      candidateName={candidate.member.name}
                     />
                   )}
                 </div>
@@ -458,7 +419,7 @@ export function InterviewSessionPage() {
                       {(transcript || candidateAnswer).trim().length} characters
                     </div>
                     <div className="flex items-center gap-3">
-                      <Button type="submit" className="min-w-[180px]" disabled={answerSubmitting || completed}>
+                      <Button type="submit" className="min-w-[180px]" disabled={answerSubmitting || isCompleted}>
                         {answerSubmitting ? "Submitting..." : "Submit answer"}
                       </Button>
                       <Button type="button" className="min-w-[140px]" onClick={() => { setTranscript(""); setCandidateAnswer(""); }}>
@@ -470,38 +431,42 @@ export function InterviewSessionPage() {
               </div>
             </form>
 
-            {answerResponse ? (
+            {feedback ? (
               <section className="mt-7 rounded-[1.4rem] border border-emerald-200 bg-emerald-50 p-5">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.34em] text-emerald-700">AI evaluation</p>
-                    <h3 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">
-                      {answerResponse.evaluation.assessment}
-                    </h3>
-                  </div>
-                  <span className="rounded-full border border-emerald-700/30 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.26em] text-emerald-800">
-                    Score {answerResponse.evaluation.score}
-                  </span>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.34em] text-emerald-700">End-of-interview feedback</p>
+                  <div className="mt-3 text-sm leading-7 text-slate-900">{feedback.summary}</div>
+                  {feedback.strengths.length > 0 ? (
+                    <div className="mt-4">
+                      <p className="text-sm font-semibold text-slate-950">Strengths</p>
+                      <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-slate-800">
+                        {feedback.strengths.map((item) => (
+                          <li key={item}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {feedback.gaps.length > 0 ? (
+                    <div className="mt-4">
+                      <p className="text-sm font-semibold text-slate-950">Gaps</p>
+                      <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-slate-800">
+                        {feedback.gaps.map((item) => (
+                          <li key={item}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {feedback.next.length > 0 ? (
+                    <div className="mt-4">
+                      <p className="text-sm font-semibold text-slate-950">Next steps</p>
+                      <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-slate-800">
+                        {feedback.next.map((item) => (
+                          <li key={item}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
                 </div>
-                <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <p className="text-[11px] font-bold uppercase tracking-[0.34em] text-slate-500">Strengths</p>
-                    <ul className="mt-2 list-disc space-y-2 pl-5 text-sm leading-6 text-slate-800">
-                      {answerResponse.evaluation.strengths.map((item) => (
-                        <li key={item}>{item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                  <div>
-                    <p className="text-[11px] font-bold uppercase tracking-[0.34em] text-slate-500">Improvement areas</p>
-                    <ul className="mt-2 list-disc space-y-2 pl-5 text-sm leading-6 text-slate-800">
-                      {answerResponse.evaluation.weaknesses.map((item) => (
-                        <li key={item}>{item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-                <p className="mt-5 text-sm leading-7 text-slate-800">{answerResponse.evaluation.feedback}</p>
               </section>
             ) : null}
           </section>

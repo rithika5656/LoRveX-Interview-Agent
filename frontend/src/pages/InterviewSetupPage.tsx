@@ -4,79 +4,43 @@ import { Button, ButtonLink } from "../components/Button";
 import { Footer } from "../components/Footer";
 import { Navbar } from "../components/Navbar";
 import { PreferencesStep } from "../components/setup/PreferencesStep";
-import { ProfileStep } from "../components/setup/ProfileStep";
 import { ReviewStep } from "../components/setup/ReviewStep";
 import { ResumeUpload, validateResumeFile } from "../components/setup/ResumeUpload";
 import { SetupStepper } from "../components/setup/SetupStepper";
-import { createInterviewSession } from "../services/interviewApi";
+import { sendInterviewRequest } from "../services/interviewApi";
+import candidatesData from "../data/candidates.json";
 import type {
   Difficulty,
-  ExperienceLevel,
+  InterviewCandidateRecord,
   InterviewConfig,
   InterviewDuration,
-  InterviewSetupPayload,
   InterviewType,
+  InterviewApiResponse,
 } from "../types/interview";
 
-const roleOptions = [
-  { value: "software-engineer", label: "Software Engineer" },
-  { value: "frontend-developer", label: "Frontend Developer" },
-  { value: "backend-developer", label: "Backend Developer" },
-  { value: "full-stack-developer", label: "Full Stack Developer" },
-  { value: "python-developer", label: "Python Developer" },
-  { value: "data-analyst", label: "Data Analyst" },
-  { value: "data-scientist", label: "Data Scientist" },
-  { value: "ai-ml-engineer", label: "AI/ML Engineer" },
-  { value: "devops-engineer", label: "DevOps Engineer" },
-  { value: "custom", label: "Custom Role" },
-] as const;
+const candidateOptions = candidatesData.candidates as InterviewCandidateRecord[];
 
 type SetupStep = 1 | 2 | 3 | 4;
 
 type SetupErrors = {
-  candidateName?: string;
-  targetRole?: string;
-  customRole?: string;
-  experienceLevel?: string;
+  selectedCandidate?: string;
   interviewType?: string;
   difficulty?: string;
   duration?: string;
   resume?: string;
 };
 
-const initialExperienceLevel = "" as "" | ExperienceLevel;
 const initialInterviewType = "" as "" | InterviewType;
 
-function formatRoleLabel(targetRole: string, customRole: string) {
-  if (targetRole === "custom") {
-    return customRole.trim() || "Custom Role";
-  }
-
-  return roleOptions.find((option) => option.value === targetRole)?.label ?? targetRole;
+function formatRoleLabel(targetRole: string) {
+  return targetRole;
 }
 
-function validateStep1(values: {
-  candidateName: string;
-  targetRole: string;
-  customRole: string;
-  experienceLevel: "" | ExperienceLevel;
-}): SetupErrors {
+function validateStep1(values: { selectedCandidate: InterviewCandidateRecord | null }): SetupErrors {
   const errors: SetupErrors = {};
 
-  if (values.candidateName.trim().length < 2 || values.candidateName.trim().length > 80) {
-    errors.candidateName = "Enter a name between 2 and 80 characters.";
-  }
-
-  if (!values.targetRole) {
-    errors.targetRole = "Select a target role to continue.";
-  }
-
-  if (values.targetRole === "custom" && values.customRole.trim().length < 2) {
-    errors.customRole = "Describe your custom role with at least 2 characters.";
-  }
-
-  if (!values.experienceLevel) {
-    errors.experienceLevel = "Choose an experience level.";
+  if (!values.selectedCandidate) {
+    errors.selectedCandidate = "Choose a candidate to continue.";
   }
 
   return errors;
@@ -125,11 +89,8 @@ function validateStep3(resume: File | null, resumeError: string | null): SetupEr
 export function InterviewSetupPage() {
   const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState<SetupStep>(1);
-  const [candidateName, setCandidateName] = useState("");
-  const [targetRole, setTargetRole] = useState("");
-  const [customRole, setCustomRole] = useState("");
-  const [experienceLevel, setExperienceLevel] = useState(initialExperienceLevel);
-  const [interviewType, setInterviewType] = useState(initialInterviewType);
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string>(candidateOptions[0]?.member.id ?? "");
+  const [interviewType, setInterviewType] = useState<InterviewType>("technical");
   const [difficulty, setDifficulty] = useState<Difficulty>("adaptive");
   const [duration, setDuration] = useState<InterviewDuration>(20);
   const [resume, setResume] = useState<File | null>(null);
@@ -142,7 +103,8 @@ export function InterviewSetupPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [currentStep]);
 
-  const step1Errors = validateStep1({ candidateName, targetRole, customRole, experienceLevel });
+  const selectedCandidate = candidateOptions.find((item) => item.member.id === selectedCandidateId) ?? null;
+  const step1Errors = validateStep1({ selectedCandidate });
   const step2Errors = validateStep2({ interviewType, difficulty, duration });
   const step3Errors = validateStep3(resume, resumeError);
   const canProceedStep1 = Object.keys(step1Errors).length === 0;
@@ -158,11 +120,11 @@ export function InterviewSetupPage() {
   }, [resume]);
 
   const config: InterviewConfig = {
-    candidateName: candidateName.trim(),
-    targetRole,
-    customRole: targetRole === "custom" ? customRole.trim() : undefined,
-    experienceLevel: experienceLevel || "beginner",
-    interviewType: interviewType || "mixed",
+    candidateName: selectedCandidate?.member.name ?? "",
+    targetRole: selectedCandidate?.member.jobRole ?? "",
+    customRole: undefined,
+    experienceLevel: selectedCandidate?.member.yearsExperience ? (selectedCandidate.member.yearsExperience < 2 ? "beginner" : selectedCandidate.member.yearsExperience < 6 ? "intermediate" : "advanced") : "beginner",
+    interviewType,
     difficulty,
     duration,
     resume: resume ?? undefined,
@@ -228,58 +190,101 @@ export function InterviewSetupPage() {
     }
   };
 
-  const handleStartInterview = () => {
+  const handleStartInterview = async () => {
     setSubmittedOnce(true);
 
-    if (!canProceedStep1 || !canProceedStep2 || !canProceedStep3 || isStarting) {
+    if (!canProceedStep1 || !canProceedStep2 || !canProceedStep3 || isStarting || !selectedCandidate) {
       return;
     }
 
-    const payload: InterviewSetupPayload = {
-      candidateName: candidateName.trim(),
-      targetRole: formatRoleLabel(targetRole, customRole),
-      experienceLevel: experienceLevel || "beginner",
-      interviewType: interviewType || "mixed",
-      difficulty,
-      duration,
+    const sessionId = crypto.randomUUID();
+    const startPayload = {
+      sessionId,
+      candidate: selectedCandidate,
     };
 
     setIsStarting(true);
     setStartError(null);
 
-    createInterviewSession(payload)
-      .then((response) => {
-        navigate(`/interview/session/${response.sessionId}`, {
-          state: {
-            sessionId: response.sessionId,
-            configuration: response.configuration,
-            resumeLabel: resume ? `${resume.name} • Ready` : null,
+    try {
+      const response: InterviewApiResponse = await sendInterviewRequest(startPayload);
+      // persist session to sessionStorage so the session can be resumed after refresh
+      const sessionPayload = {
+        sessionId,
+        candidate: selectedCandidate,
+        messages: [
+          {
+            id: `${sessionId}-interviewer-1`,
+            role: "interviewer",
+            text: response.reply,
           },
-        });
-      })
-      .catch((error: unknown) => {
-        setStartError(error instanceof Error ? error.message : "Failed to start the interview session.");
-      })
-      .finally(() => {
-        setIsStarting(false);
+        ],
+        isCompleted: response.done,
+        feedback: response.feedback ?? null,
+      };
+
+      try {
+        sessionStorage.setItem(`interview.session.${sessionId}`, JSON.stringify(sessionPayload));
+      } catch (e) {
+        // ignore storage errors
+      }
+
+      navigate(`/interview/session/${sessionId}`, {
+        state: sessionPayload,
       });
+    } catch (error: unknown) {
+      setStartError(error instanceof Error ? error.message : "Failed to start the interview session.");
+    } finally {
+      setIsStarting(false);
+    }
   };
 
   const renderStep = () => {
     if (currentStep === 1) {
       return (
-        <ProfileStep
-          candidateName={candidateName}
-          targetRole={targetRole}
-          customRole={customRole}
-          experienceLevel={experienceLevel}
-          roleOptions={roleOptions}
-          onCandidateNameChange={setCandidateName}
-          onTargetRoleChange={setTargetRole}
-          onCustomRoleChange={setCustomRole}
-          onExperienceLevelChange={setExperienceLevel}
-          errors={submittedOnce ? step1Errors : {}}
-        />
+        <section className="space-y-8">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.38em] text-slate-500">Step 1</p>
+            <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">Select a candidate</h2>
+            <p className="mt-4 max-w-2xl text-base leading-8 text-slate-600">
+              Choose a real candidate from the training data. InterviewX will use their profile for the session.
+            </p>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            {candidateOptions.map((candidate) => {
+              const selected = candidate.member.id === selectedCandidateId;
+              return (
+                <button
+                  key={candidate.member.id}
+                  type="button"
+                  onClick={() => setSelectedCandidateId(candidate.member.id)}
+                  className={`rounded-[1.5rem] border px-5 py-5 text-left transition duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 ${
+                    selected
+                      ? "border-slate-950 bg-slate-950 text-white shadow-[0_18px_50px_-30px_rgba(15,23,42,0.65)]"
+                      : "border-slate-200 bg-white text-slate-950 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_14px_36px_-24px_rgba(15,23,42,0.18)]"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-lg font-semibold">{candidate.member.name}</p>
+                      <p className="mt-2 text-sm text-slate-400">{candidate.member.jobRole}</p>
+                    </div>
+                    <span className="text-xs uppercase tracking-[0.28em] text-slate-400">{candidate.member.yearsExperience} yrs</span>
+                  </div>
+                  <div className="mt-4 text-sm leading-7 text-slate-600">
+                    <p>{candidate.member.education}</p>
+                    <p className="mt-2 text-slate-500">{candidate.signals.missionsCompleted} missions completed</p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {submittedOnce && step1Errors.selectedCandidate ? (
+            <p className="text-sm text-rose-600">{step1Errors.selectedCandidate}</p>
+          ) : null}
+        </section>
       );
     }
 
@@ -301,7 +306,7 @@ export function InterviewSetupPage() {
       return <ResumeUpload file={resume} error={submittedOnce ? step3Errors.resume : resumeError ?? undefined} onFileSelect={handleResumeSelect} />;
     }
 
-    return <ReviewStep config={config} resumeLabel={resumeLabel} targetRoleLabel={formatRoleLabel(targetRole, customRole)} />;
+    return <ReviewStep config={config} resumeLabel={resumeLabel} targetRoleLabel={formatRoleLabel(config.targetRole)} />;
   };
 
   const primaryDisabled =
@@ -374,10 +379,10 @@ export function InterviewSetupPage() {
               <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">Current selection</p>
                 <div className="mt-3 space-y-2 text-slate-950">
-                  <p><span className="font-medium">Candidate:</span> {candidateName.trim() || "Not set"}</p>
-                  <p><span className="font-medium">Role:</span> {targetRole ? formatRoleLabel(targetRole, customRole) : "Not set"}</p>
-                  <p><span className="font-medium">Experience:</span> {experienceLevel || "Not set"}</p>
-                  <p><span className="font-medium">Type:</span> {interviewType || "Not set"}</p>
+                  <p><span className="font-medium">Candidate:</span> {selectedCandidate?.member.name ?? "Not set"}</p>
+                  <p><span className="font-medium">Role:</span> {selectedCandidate?.member.jobRole ?? "Not set"}</p>
+                  <p><span className="font-medium">Experience:</span> {config.experienceLevel}</p>
+                  <p><span className="font-medium">Type:</span> {interviewType}</p>
                   <p><span className="font-medium">Difficulty:</span> {difficulty}</p>
                   <p><span className="font-medium">Duration:</span> {duration} minutes</p>
                   <p><span className="font-medium">Resume:</span> {resume ? resume.name : "Optional"}</p>

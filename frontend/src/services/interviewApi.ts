@@ -1,10 +1,7 @@
 import type {
-  InterviewAnswerSubmissionRequest,
-  InterviewAnswerSubmissionResponse,
-  InterviewCreationResponse,
-  InterviewSetupPayload,
-  InterviewSessionApiResponse,
-  InterviewStartApiResponse,
+  InterviewApiResponse,
+  InterviewContinueRequest,
+  InterviewStartRequest,
 } from "../types/interview";
 
 const DEFAULT_BACKEND_URL = "http://127.0.0.1:8000";
@@ -22,8 +19,10 @@ async function readErrorMessage(response: Response): Promise<string> {
   }
 }
 
-export async function createInterviewSession(payload: InterviewSetupPayload): Promise<InterviewCreationResponse> {
-  const response = await fetch(`${getBackendUrl()}/api/interviews`, {
+export async function sendInterviewRequest(
+  payload: InterviewStartRequest | InterviewContinueRequest,
+): Promise<InterviewApiResponse> {
+  const response = await fetch(`${getBackendUrl()}/api/interview`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -35,46 +34,5 @@ export async function createInterviewSession(payload: InterviewSetupPayload): Pr
     throw new Error(await readErrorMessage(response));
   }
 
-  return (await response.json()) as InterviewCreationResponse;
-}
-
-export async function getInterviewSession(sessionId: string): Promise<InterviewSessionApiResponse> {
-  const response = await fetch(`${getBackendUrl()}/api/interviews/${sessionId}`);
-
-  if (!response.ok) {
-    throw new Error(await readErrorMessage(response));
-  }
-
-  return (await response.json()) as InterviewSessionApiResponse;
-}
-
-export async function startInterviewSession(sessionId: string): Promise<InterviewStartApiResponse> {
-  const response = await fetch(`${getBackendUrl()}/api/interviews/${sessionId}/start`, {
-    method: "POST",
-  });
-
-  if (!response.ok) {
-    throw new Error(await readErrorMessage(response));
-  }
-
-  return (await response.json()) as InterviewStartApiResponse;
-}
-
-export async function submitInterviewAnswer(
-  sessionId: string,
-  payload: InterviewAnswerSubmissionRequest,
-): Promise<InterviewAnswerSubmissionResponse> {
-  const response = await fetch(`${getBackendUrl()}/api/interviews/${sessionId}/answer`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    throw new Error(await readErrorMessage(response));
-  }
-
-  return (await response.json()) as InterviewAnswerSubmissionResponse;
+  return (await response.json()) as InterviewApiResponse;
 }
