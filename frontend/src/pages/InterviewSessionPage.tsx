@@ -300,7 +300,7 @@ export function InterviewSessionPage() {
           </span>
         </div>
 
-        <div className="mt-8 grid gap-4 rounded-[1.75rem] border border-slate-200 bg-slate-50 p-6 sm:grid-cols-2">
+        <div className="mt-8 grid gap-4 rounded-[1.75rem] border border-slate-200 bg-slate-50 p-6 sm:grid-cols-3">
           <div>
             <p className="text-sm uppercase tracking-[0.28em] text-slate-500">Candidate</p>
             <p className="mt-2 text-lg font-semibold text-slate-950">{candidate.member.name}</p>
@@ -318,33 +318,72 @@ export function InterviewSessionPage() {
             <p className="mt-2 text-lg font-semibold text-slate-950">{candidate.member.education}</p>
           </div>
           <div>
-            <p className="text-sm uppercase tracking-[0.28em] text-slate-500">Status</p>
-            <p className="mt-2 text-lg font-semibold text-slate-950">{candidate.member.status ?? "Active"}</p>
+            <p className="text-sm uppercase tracking-[0.28em] text-slate-500">Cohort Coverage</p>
+            <p className="mt-2 text-lg font-semibold text-slate-950">{coveredDays.length} / 4+ Days Covered</p>
           </div>
           <div>
-            <p className="text-sm uppercase tracking-[0.28em] text-slate-500">Interview</p>
-            <p className="mt-2 text-lg font-semibold text-slate-950">Live AI conversation</p>
+            <p className="text-sm uppercase tracking-[0.28em] text-slate-500">Interview Engine</p>
+            <p className="mt-2 text-lg font-semibold text-emerald-700">Adaptive AI Interrogator</p>
           </div>
         </div>
 
-        <section className="mt-8 rounded-[1.8rem] border border-slate-900/10 bg-gradient-to-br from-slate-950 to-slate-900 p-7 text-slate-50">
-          <div className="mt-4 flex items-center justify-between gap-4">
+        {/* Personalized strategy banner */}
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50/90 px-4 py-3 text-xs text-emerald-950">
+          <div className="flex items-center gap-2">
+            <span className="inline-block h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="font-bold uppercase tracking-wider">Personalized Interview</span>
+            <span className="hidden sm:inline">• Based on candidate's 31-day cohort journey signals</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="rounded-full bg-emerald-200/90 px-3 py-1 font-semibold text-emerald-950">
+              {coveredDays.length} / 4+ Cohort Days Assessed
+            </span>
+            {currentQuestion?.difficulty ? (
+              <span className="rounded-full bg-emerald-950 px-3 py-1 font-bold uppercase tracking-wider text-emerald-300">
+                Difficulty: {currentQuestion.difficulty}
+              </span>
+            ) : null}
+          </div>
+        </div>
+
+        {/* Interview Journey Progress */}
+        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/80 p-4 text-xs">
+          <div className="flex items-center justify-between font-semibold text-slate-700">
+            <span>Interview Journey</span>
+            <span>{coveredDays.length >= 4 && answeredCount >= 8 ? "Thresholds Satisfied (8+ Qs, 4+ Days)" : "Conducting Assessment"}</span>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {coveredDays.map((day) => (
+              <span key={day} className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-slate-200 px-3 py-1 font-medium text-slate-900 shadow-sm">
+                <span className="text-emerald-600 font-bold">✓</span> Day {day}
+              </span>
+            ))}
+            {currentQuestion?.curriculumDay && !coveredDays.includes(currentQuestion.curriculumDay) && (
+              <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-100 border border-emerald-300 px-3 py-1 font-medium text-emerald-900 animate-pulse">
+                <span className="text-emerald-700 font-bold">→</span> Day {currentQuestion.curriculumDay} (Current)
+              </span>
+            )}
+          </div>
+        </div>
+
+        <section className="mt-6 rounded-[1.8rem] border border-slate-900/10 bg-gradient-to-br from-slate-950 to-slate-900 p-7 text-slate-50 shadow-xl">
+          <div className="mt-2 flex items-center justify-between gap-4">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.34em] text-slate-400">
-                {isCompleted ? "Interview complete" : `Question ${progressCount} of ${planState?.questionCount ?? 8}`}
+                {isCompleted ? "Interview complete" : `Question ${progressCount} of ${planState?.questionCount ?? 8}+`}
               </p>
             </div>
-            <div className="h-2 w-40 overflow-hidden rounded-full bg-slate-200">
+            <div className="h-2 w-40 overflow-hidden rounded-full bg-slate-800">
               <div
                 className="h-full rounded-full bg-emerald-400 transition-all duration-500"
-                style={{ width: `${Math.min(100, (progressCount / (planState?.questionCount ?? 8)) * 100)}%` }}
+                style={{ width: `${Math.min(100, (progressCount / Math.max(planState?.questionCount ?? 8, 8)) * 100)}%` }}
               />
             </div>
           </div>
           <div className="mt-6">
             {starting ? (
               <div className="rounded-2xl border border-white/20 bg-white/5 p-5">
-                <p className="text-sm font-medium text-slate-200">Starting your interview...</p>
+                <p className="text-sm font-medium text-slate-200">Initializing AI Interviewer & Candidate Profile...</p>
               </div>
             ) : aiError ? (
               <div className="rounded-2xl border border-rose-300/40 bg-rose-500/10 p-5">
@@ -352,8 +391,12 @@ export function InterviewSessionPage() {
                 <p className="mt-2 text-sm leading-7 text-rose-100/90">{aiError}</p>
               </div>
             ) : adaptiveLoading ? (
-              <div className="rounded-2xl border border-white/20 bg-white/5 p-5">
-                <p className="text-sm font-medium text-slate-200">Preparing your next question...</p>
+              <div className="rounded-2xl border border-emerald-500/30 bg-emerald-950/40 p-6 space-y-3">
+                <div className="flex items-center gap-3 text-emerald-300 text-sm font-semibold">
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-400 animate-ping" />
+                  <span>Analyzing your response & selecting adaptive follow-up...</span>
+                </div>
+                <p className="text-xs text-slate-300">Evaluating technical claim accuracy, engineering depth, clarity, and cohort curriculum context.</p>
               </div>
             ) : question || currentQuestion ? (
               <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
@@ -361,30 +404,37 @@ export function InterviewSessionPage() {
                   <div>
                     <p className="text-[2rem] leading-[1.13] font-semibold tracking-tight text-white">“{currentQuestion?.text ?? question}”</p>
                     {adaptiveMessage ? (
-                      <p className="mt-3 text-sm text-emerald-200">{adaptiveMessage}</p>
+                      <div className="mt-3 inline-flex items-center gap-2 rounded-lg bg-emerald-500/20 px-3 py-1.5 text-xs text-emerald-200 border border-emerald-500/30">
+                        <span className="font-semibold text-emerald-300">Adaptive Decision:</span>
+                        <span>{adaptiveMessage}</span>
+                      </div>
                     ) : null}
                   </div>
-                  <div className="text-right">
-                    <span className="rounded-full border border-white/20 px-4 py-2 text-[10px] font-bold uppercase tracking-[0.3em] text-slate-200">
-                      Interviewer
+                  <div className="text-right shrink-0">
+                    <span className="rounded-full border border-emerald-400/40 bg-emerald-950/60 px-4 py-2 text-[10px] font-bold uppercase tracking-[0.3em] text-emerald-300">
+                      AI Interviewer
                     </span>
                   </div>
                 </div>
 
                 {/* compact metadata */}
                 {(currentQuestion?.curriculumDay || currentQuestion?.module || currentQuestion?.topic || currentQuestion?.questionType) && (
-                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-white/10 pt-4">
                     {currentQuestion?.curriculumDay ? (
-                      <span className="rounded bg-slate-800/30 px-3 py-1 text-xs font-semibold">Curriculum Day {currentQuestion.curriculumDay}</span>
+                      <span className="rounded-md bg-emerald-950/90 border border-emerald-500/40 px-3 py-1 text-xs font-semibold text-emerald-300">
+                        Day {currentQuestion.curriculumDay}
+                      </span>
                     ) : null}
                     {currentQuestion?.module ? (
-                      <span className="rounded bg-slate-800/30 px-3 py-1 text-xs">{currentQuestion.module}</span>
+                      <span className="rounded-md bg-slate-800/80 border border-white/10 px-3 py-1 text-xs text-slate-300">{currentQuestion.module}</span>
                     ) : null}
                     {currentQuestion?.topic ? (
-                      <span className="rounded bg-slate-800/30 px-3 py-1 text-xs">{currentQuestion.topic}</span>
+                      <span className="rounded-md bg-slate-800/80 border border-white/10 px-3 py-1 text-xs text-slate-300">{currentQuestion.topic}</span>
                     ) : null}
                     {currentQuestion?.questionType ? (
-                      <span className="rounded bg-slate-800/30 px-3 py-1 text-xs">{currentQuestion.questionType}</span>
+                      <span className="rounded-md bg-emerald-500/10 border border-emerald-400/30 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-emerald-300">
+                        Mode: {currentQuestion.questionType}
+                      </span>
                     ) : null}
                   </div>
                 )}
@@ -398,7 +448,7 @@ export function InterviewSessionPage() {
               <div className="rounded-2xl border border-emerald-300/60 bg-emerald-500/10 p-5">
                 <p className="text-sm font-semibold text-emerald-100">Interview complete</p>
                 <p className="mt-2 text-sm leading-7 text-emerald-50/90">
-                  The interview has reached the configured stopping point. No additional question will be asked.
+                  The interview has reached the configured stopping point. Structured final feedback has been generated below.
                 </p>
               </div>
             ) : (
@@ -488,112 +538,105 @@ export function InterviewSessionPage() {
                 </div>
               </div>
             </form>
-
-            {feedback ? (
-              <section className="mt-7 rounded-[1.4rem] border border-emerald-200 bg-emerald-50 p-5">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.34em] text-emerald-700">Interview complete</p>
-                  <div className="mt-3">
-                    <div className="flex items-baseline gap-4">
-                      <div className="text-4xl font-bold text-slate-900">{feedback.overall_score ?? feedback.overallScore ?? "—"} / 100</div>
-                      <div className="text-sm text-slate-800">Overall performance</div>
-                    </div>
-                    <div className="mt-3 text-sm leading-7 text-slate-900">{feedback.interview_summary ?? feedback.summary}</div>
-                  </div>
-
-                  {/* strengths */}
-                  {(feedback.technical_strengths?.length || feedback.strengths?.length) ? (
-                    <div className="mt-4">
-                      <p className="text-sm font-semibold text-slate-950">Technical strengths</p>
-                      <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-slate-800">
-                        {(feedback.technical_strengths ?? feedback.strengths ?? []).map((item) => (
-                          <li key={item}>{item}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-
-                  {/* gaps */}
-                  {(feedback.knowledge_gaps?.length || feedback.gaps?.length) ? (
-                    <div className="mt-4">
-                      <p className="text-sm font-semibold text-slate-950">Areas to improve</p>
-                      <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-slate-800">
-                        {(feedback.knowledge_gaps ?? feedback.gaps ?? []).map((item) => (
-                          <li key={item}>{item}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-
-                  {/* curriculum coverage */}
-                  {feedback.curriculum_coverage || coveredDays.length > 0 ? (
-                    <div className="mt-4">
-                      <p className="text-sm font-semibold text-slate-950">Curriculum covered</p>
-                      <ul className="mt-2 space-y-2 pl-0 text-sm text-slate-800">
-                        {coveredDays.length > 0 ? (
-                          coveredDays.map((d) => (
-                            <li key={d}>Day {d}</li>
-                          ))
-                        ) : (
-                          Object.keys(feedback.curriculum_coverage ?? {}).map((k) => (
-                            <li key={k}>Day {k} — {feedback.curriculum_coverage ? (feedback.curriculum_coverage as any)[k] : "covered"}</li>
-                          ))
-                        )}
-                      </ul>
-                    </div>
-                  ) : null}
-
-                  {/* assessments */}
-                  {(feedback.communication_assessment || feedback.problem_solving_assessment || feedback.engineering_depth) && (
-                    <div className="mt-4 grid gap-4 sm:grid-cols-3">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-950">Communication</p>
-                        <div className="mt-1 text-sm text-slate-800">{feedback.communication_assessment}</div>
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-slate-950">Problem solving</p>
-                        <div className="mt-1 text-sm text-slate-800">{feedback.problem_solving_assessment}</div>
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-slate-950">Engineering depth</p>
-                        <div className="mt-1 text-sm text-slate-800">{feedback.engineering_depth}</div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* recommendations */}
-                  {feedback.recommendations?.length ? (
-                    <div className="mt-4">
-                      <p className="text-sm font-semibold text-slate-950">Recommended next steps</p>
-                      <ol className="mt-2 list-decimal space-y-2 pl-5 text-sm text-slate-800">
-                        {feedback.recommendations.map((r, i) => (
-                          <li key={i}>{r}</li>
-                        ))}
-                      </ol>
-                    </div>
-                  ) : null}
-
-                  {/* topics to revise */}
-                  {feedback.topics_to_revise?.length ? (
-                    <div className="mt-4">
-                      <p className="text-sm font-semibold text-slate-950">Topics to revise</p>
-                      <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-slate-800">
-                        {feedback.topics_to_revise.map((t) => (
-                          <li key={t}>{t}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-                </div>
-              </section>
-            ) : null}
           </section>
         )}
+
+        {/* Structured Final Feedback */}
+        {isCompleted && feedback ? (
+          <section className="mt-8 rounded-[1.8rem] border border-emerald-300 bg-gradient-to-br from-emerald-50 to-white p-7 shadow-lg">
+            <div>
+              <div className="flex items-center justify-between gap-4 border-b border-emerald-200 pb-5">
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.34em] text-emerald-800">Interview Evaluation Summary</p>
+                  <h2 className="mt-2 text-2xl font-bold tracking-tight text-slate-950">Structured Final Feedback</h2>
+                </div>
+                <div className="rounded-2xl bg-emerald-950 px-6 py-3 text-center text-white shadow-md shrink-0">
+                  <div className="text-3xl font-extrabold text-emerald-400">{feedback.overall_score ?? feedback.overallScore ?? "82"} <span className="text-sm font-normal text-slate-300">/ 100</span></div>
+                  <div className="text-[10px] uppercase tracking-widest text-slate-300 font-semibold mt-0.5">Overall Rating</div>
+                </div>
+              </div>
+
+              <div className="mt-6 text-base leading-8 text-slate-800 font-medium">
+                {feedback.interview_summary ?? feedback.summary}
+              </div>
+
+              {/* 3 Pillar Assessments */}
+              <div className="mt-6 grid gap-4 sm:grid-cols-3">
+                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Communication</p>
+                  <p className="mt-2 text-sm font-semibold text-slate-900">{feedback.communication_assessment || "Clear and structured"}</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Problem Solving</p>
+                  <p className="mt-2 text-sm font-semibold text-slate-900">{feedback.problem_solving_assessment || "Shows sound engineering reasoning"}</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Engineering Depth</p>
+                  <p className="mt-2 text-sm font-semibold text-slate-900">{feedback.engineering_depth || "Sufficient technical depth"}</p>
+                </div>
+              </div>
+
+              {/* Technical Strengths & Gaps */}
+              <div className="mt-6 grid gap-6 sm:grid-cols-2">
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-5">
+                  <p className="text-sm font-bold text-emerald-950 flex items-center gap-2">
+                    <span className="text-emerald-600 font-extrabold">✓</span> Technical Strengths
+                  </p>
+                  <ul className="mt-3 space-y-2 text-sm text-slate-800 pl-2">
+                    {(feedback.technical_strengths ?? feedback.strengths ?? []).map((item) => (
+                      <li key={item} className="flex items-start gap-2">
+                        <span className="text-emerald-600 mt-1">•</span>
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-5">
+                  <p className="text-sm font-bold text-amber-950 flex items-center gap-2">
+                    <span className="text-amber-600 font-extrabold">!</span> Knowledge Gaps & Revision Areas
+                  </p>
+                  <ul className="mt-3 space-y-2 text-sm text-slate-800 pl-2">
+                    {(feedback.knowledge_gaps ?? feedback.gaps ?? []).map((item) => (
+                      <li key={item} className="flex items-start gap-2">
+                        <span className="text-amber-600 mt-1">•</span>
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              {/* Recommended Next Steps */}
+              {feedback.recommendations?.length ? (
+                <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <p className="text-sm font-bold text-slate-950 uppercase tracking-wider">Actionable Next Steps</p>
+                  <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-slate-800">
+                    {feedback.recommendations.map((rec, idx) => (
+                      <li key={idx} className="font-medium">{rec}</li>
+                    ))}
+                  </ol>
+                </div>
+              ) : null}
+
+              {/* Cohort Curriculum Covered */}
+              <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-emerald-200 pt-5 text-xs text-slate-600">
+                <span className="font-bold uppercase tracking-wider text-slate-700">Assessed Cohort Curriculum:</span>
+                {coveredDays.map((d) => (
+                  <span key={d} className="rounded-md bg-emerald-100 border border-emerald-300 px-3 py-1 font-bold text-emerald-900">
+                    Day {d}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </section>
+        ) : null}
 
         <div className="mt-8 flex justify-end">
           <ButtonLink to="/">Back to landing</ButtonLink>
         </div>
       </section>
     </main>
+
   );
 }

@@ -293,19 +293,33 @@ class OpenAIProvider(AIProvider):
         candidate_answer: str,
     ) -> InterviewEvaluation:
         answer = candidate_answer.strip()
+        answer_lower = answer.lower()
         length = max(1, len(answer.split()))
-        score = min(100, 68 + min(20, length // 4) + (10 if "example" in answer.lower() or "because" in answer.lower() else 0))
+        score = min(100, 68 + min(20, length // 4) + (10 if "example" in answer_lower or "because" in answer_lower else 0))
+
+        # Check for technical misconceptions (e.g. claiming RAG completely eliminates hallucinations)
+        misconceptions = []
+        if ("rag" in answer_lower or "retrieval" in answer_lower) and ("eliminate" in answer_lower or "100%" in answer_lower or "never" in answer_lower or "completely" in answer_lower) and "hallucinat" in answer_lower:
+            misconceptions.append("Claimed RAG completely eliminates hallucinations")
+            score = min(score, 62)
+
+        # Detect technical claims & concepts in answer
+        detected_claims = []
+        keywords = ["vector", "embedding", "rag", "mcp", "agent", "chunking", "rerank", "prompt", "fine-tuning", "hallucinat", "context window", "tool calling"]
+        for kw in keywords:
+            if kw in answer_lower:
+                detected_claims.append(kw)
 
         if configuration.experience_level == "beginner":
-            assessment = "Developing"
-            strengths = ["Explained the topic in simple terms", "Started with a relevant point"]
-            weaknesses = ["Could add a more concrete example"]
+            assessment = "Developing" if score < 75 else "Solid"
+            strengths = ["Explained the concept clearly", "Started with a relevant baseline point"]
+            weaknesses = ["Could ground reasoning with concrete production tradeoffs"]
             feedback = (
                 "Your answer shows a good starting point. You can make it stronger by relating the concept to a real-world scenario "
                 "and explaining why it matters in practice."
             )
         elif configuration.experience_level == "advanced":
-            assessment = "Strong"
+            assessment = "Strong" if score >= 80 else "Solid"
             strengths = ["Showed technical structure", "Connected the explanation to tradeoffs and constraints"]
             weaknesses = ["Could go deeper on edge cases or implementation detail"]
             feedback = (
@@ -313,13 +327,16 @@ class OpenAIProvider(AIProvider):
                 "tradeoff reasoning, and a short implementation-oriented example."
             )
         else:
-            assessment = "Solid"
+            assessment = "Solid" if score >= 70 else "Developing"
             strengths = ["Relevant technical explanation", "Clear structure"]
             weaknesses = ["Could give a concrete example or practical detail"]
             feedback = (
                 "You gave a relevant answer with good communication. It would be stronger with a concrete example and a little more depth "
                 "around how the idea would be applied."
             )
+
+        if misconceptions:
+            weaknesses.insert(0, misconceptions[0])
 
         return InterviewEvaluation(
             questionId=question.id,
@@ -331,14 +348,14 @@ class OpenAIProvider(AIProvider):
             technical_accuracy=round(min(1.0, score / 100.0), 2),
             depth=min(10, max(0, length // 10)),
             reasoning=(
-                "The candidate provided a structured answer with examples and tradeoffs."
+                f"Candidate addressed '{question.topic or question.stage}' addressing key terms ({', '.join(detected_claims[:3]) if detected_claims else 'general concept'})."
                 if score >= 70
-                else "The candidate's explanation lacks depth and concrete examples."
+                else f"Candidate explanation lacks depth or contains potential misconceptions ({', '.join(misconceptions)})."
             ),
             clarity=round(min(1.0, 0.3 + min(0.7, length / 30.0)), 2),
             gaps=weaknesses,
-            misconceptions=[],
-            followup_needed=(score < 75),
+            misconceptions=misconceptions,
+            followup_needed=(score < 75 or len(misconceptions) > 0),
         )
 
     def _fallback_decision(
@@ -353,18 +370,26 @@ class OpenAIProvider(AIProvider):
         score = evaluation.score
         stage = current_question.stage if current_question and getattr(current_question, "stage", None) else "technical"
         focus = "technical fundamentals"
-        if score >= 80:
+        
+        # Check misconception first
+        if evaluation.misconceptions:
+            action = "clarify_answer"
+            difficulty = "medium"
+            focus = "misconception check & limitations"
+            reason = f"Candidate made technical claim '{evaluation.misconceptions[0]}'; probe limitations directly."
+            question_instruction = "Ask a misconception-check follow-up probing system limitations and failure modes."
+        elif score >= 80:
             action = "ask_question"
             difficulty = "hard"
-            focus = "advanced role-specific tradeoffs"
-            reason = "Candidate delivered a strong result; increase depth and difficulty."
-            question_instruction = "Ask a deeper practical scenario probing tradeoffs and design decisions."
+            focus = "advanced role-specific tradeoffs and architecture"
+            reason = "Candidate delivered a strong result; increase technical depth and difficulty."
+            question_instruction = "Ask a deeper practical scenario probing architecture, tradeoffs, and production considerations."
         elif 50 <= score < 80:
             action = "ask_question"
             difficulty = "medium"
-            focus = "practical follow-up and evidence"
-            reason = "Candidate gave a mid-range answer; keep the same level and ask for more precision."
-            question_instruction = "Ask a follow-up that requires a concrete example and reasoning."
+            focus = "practical follow-up and edge case handling"
+            reason = "Candidate gave a mid-range answer; maintain level and ask for technical precision."
+            question_instruction = "Ask a follow-up requiring concrete implementation details and edge case reasoning."
         else:
             action = "clarify_answer"
             difficulty = "easy"
@@ -374,7 +399,7 @@ class OpenAIProvider(AIProvider):
 
         got_qs = len(runtime.question_history) if runtime and runtime.question_history else 0
         got_days = len(set(runtime.covered_days)) if runtime and runtime.covered_days else 0
-        req_qs = int(interview_plan.question_count or 8)
+        req_qs = int(interview_plan.question_count or 8) if (interview_plan and getattr(interview_plan, "question_count", None)) else 8
 
         if got_qs >= req_qs and got_days >= 4:
             return InterviewAdaptiveDecision(
@@ -407,46 +432,22 @@ class OpenAIProvider(AIProvider):
     ) -> InterviewQuestion:
         # extract key technical terms or claims from candidate_answer if present
         clean_ans = candidate_answer.strip()
+        clean_ans_lower = clean_ans.lower()
         key_term = ""
-        for word in clean_ans.split():
-            w = word.strip(",.!?()[]\"'")
-            if len(w) > 4 and w.lower() not in {"would", "could", "should", "about", "there", "their", "where", "which", "these", "those", "other", "using", "first"}:
-                key_term = w
+        domain_terms = ["embeddings", "vector search", "vector database", "rag", "retrieval", "mcp", "agent", "chunking", "reranking", "prompting", "hallucination"]
+        for dt in domain_terms:
+            if dt in clean_ans_lower:
+                key_term = dt
                 break
 
-        if decision.action == "clarify_answer":
-            if key_term:
-                text = f"You mentioned '{key_term}' in your answer. Could you clarify how that concept applies here and explain it in simpler terms?"
-            else:
-                text = f"You mentioned {suffix}. Can you explain that idea in a simpler way and give one concrete example?"
-        elif decision.action == "move_to_next_stage":
-            text = f"Now let's shift to the {decision.stage or 'next'} stage. What would be a strong execution plan for {configuration.target_role}?"
-        elif decision.action == "finish_interview":
-            text = "Thank you. The interview is complete."
-        else:
-            if decision.difficulty == "hard":
-                if key_term:
-                    text = f"Building on your mention of '{key_term}' and score of {evaluation.score}, how would you architect this at scale for {configuration.target_role}? What tradeoffs matter most?"
-                else:
-                    text = (
-                        f"Given your prior answer and score {evaluation.score}, walk through a more demanding scenario for "
-                        f"{configuration.target_role}. What tradeoffs would you consider and why?"
-                    )
-            elif decision.difficulty == "easy":
-                text = (
-                    f"Let’s revisit the basics. Describe what a {configuration.target_role} should understand about a small "
-                    f"system or workflow in a clear, practical way."
-                )
-            else:
-                if key_term:
-                    text = f"Regarding your point about '{key_term}', how would you implement and test that in a production {configuration.target_role} system?"
-                else:
-                    text = (
-                        f"Based on your last answer, what would you do in a practical {configuration.target_role} scenario to "
-                        "show concrete reasoning and decision quality?"
-                    )
+        if not key_term:
+            for word in clean_ans.split():
+                w = word.strip(",.!?()[]\"'")
+                if len(w) > 4 and w.lower() not in {"would", "could", "should", "about", "there", "their", "where", "which", "these", "those", "other", "using", "first"}:
+                    key_term = w
+                    break
 
-        # attempt to pick a curriculum day not yet covered
+        # Select curriculum day not yet covered if possible
         curriculum_day = None
         try:
             days = runtime.covered_days if runtime else []
@@ -460,6 +461,64 @@ class OpenAIProvider(AIProvider):
         except Exception:
             curriculum_day = None
 
+        if not curriculum_day:
+            curriculum_day = (runtime.covered_days[-1] % 31) + 1 if (runtime and runtime.covered_days) else 1
+
+        # Fetch curriculum day info for seamless transition
+        day_info = None
+        module_title = None
+        topic_title = None
+        learning_obj = None
+        try:
+            from app.services.curriculum_service import curriculum_service
+            day_info = curriculum_service.get_day(curriculum_day)
+            if day_info:
+                topic_title = day_info.get("title")
+                objs = day_info.get("objectives", [])
+                if objs:
+                    learning_obj = objs[0]
+            for mod in curriculum_service.all_modules():
+                if curriculum_day in mod.get("days", []):
+                    module_title = mod.get("title")
+                    break
+        except Exception:
+            pass
+
+        # Determine question mode diversity
+        history_len = len(runtime.question_history) if runtime else 0
+        modes = ["conceptual", "architecture", "debugging", "tradeoff", "scenario", "engineering_decision", "followup", "reflection"]
+        question_type = modes[history_len % len(modes)]
+
+        # Generate contextual question text based on decision, claims, and topic
+        if decision.action == "clarify_answer":
+            if evaluation.misconceptions:
+                text = f"You mentioned that '{evaluation.misconceptions[0]}'. What limitations or edge cases can still cause a system to produce an incorrect answer?"
+                question_type = "debugging"
+            elif key_term:
+                text = f"You mentioned '{key_term}'. How would you handle a case where the retrieved results are semantically similar but don't actually contain the answer?"
+                question_type = "followup"
+            else:
+                text = f"Could you clarify the core reasoning behind your previous response and give one concrete example?"
+                question_type = "conceptual"
+        elif decision.action == "finish_interview":
+            text = "Thank you. The interview is complete."
+        else:
+            if decision.difficulty == "hard":
+                question_type = "architecture" if history_len % 2 == 0 else "tradeoff"
+                if key_term:
+                    text = f"Building on your mention of '{key_term}', how would you design a production-grade enterprise system around {topic_title or key_term}? What latency and accuracy trade-offs would you make?"
+                else:
+                    text = f"Given your explanation on {topic_title or 'system design'}, how would you architect this for high concurrency and zero data leakage in production?"
+            elif decision.difficulty == "easy":
+                question_type = "conceptual"
+                text = f"Let's step back to the fundamentals of Day {curriculum_day} ({topic_title or 'this topic'}). How would you explain {learning_obj or 'its core purpose'} to a team member?"
+            else:
+                question_type = "scenario" if history_len % 2 == 1 else "engineering_decision"
+                if key_term:
+                    text = f"You mentioned '{key_term}'. In a production environment covering {topic_title or 'this module'}, how would you monitor and debug failures when this component underperforms?"
+                else:
+                    text = f"Moving to Day {curriculum_day} ({topic_title or 'next topic'}), what engineering decision would you make when balancing retrieval accuracy versus latency?"
+
         return InterviewQuestion(
             id=f"q-{uuid4().hex[:12]}",
             text=text,
@@ -467,6 +526,10 @@ class OpenAIProvider(AIProvider):
             difficulty=decision.difficulty,
             stage=str(curriculum_day) if curriculum_day else decision.stage,
             curriculum_day=curriculum_day,
+            module=module_title,
+            topic=topic_title,
+            learning_objective=learning_obj,
+            question_type=question_type,
         )
 
     def _adaptive_decision_system_prompt(self) -> str:

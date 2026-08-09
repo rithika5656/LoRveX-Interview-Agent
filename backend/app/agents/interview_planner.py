@@ -93,15 +93,22 @@ class InterviewPlannerAgent:
 
             if chosen_day:
                 try:
-                    q.curriculum_day = int(chosen_day)
-                    logger.debug("planner set curriculum_day %s", q.curriculum_day)
+                    day_n = int(chosen_day)
+                    q.curriculum_day = day_n
+                    q.stage = str(day_n)
+                    day_info = curriculum_service.get_day(day_n)
+                    if day_info:
+                        q.topic = day_info.get("title")
+                        objs = day_info.get("objectives", [])
+                        if objs:
+                            q.learning_objective = objs[0]
+                    for mod in curriculum_service.all_modules():
+                        if day_n in mod.get("days", []):
+                            q.module = mod.get("title")
+                            break
+                    q.question_type = "conceptual"
                 except Exception as e:
-                    logger.debug("planner failed to set curriculum_day: %s", e)
-                    q.curriculum_day = None
-                try:
-                    q.stage = str(chosen_day)
-                except Exception:
-                    pass
+                    logger.debug("planner failed to set curriculum metadata: %s", e)
         except Exception as e:
             logger.exception("exception while attaching curriculum metadata")
             pass

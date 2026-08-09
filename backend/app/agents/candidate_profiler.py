@@ -40,10 +40,18 @@ def build_profile(candidate: Dict[str, Any]) -> Dict[str, Any]:
         elif not passed and not m.get("skipped"):
             challenging.append(day)
 
-    # recommended topics: days not completed yet or failed
+    # recommended topics: days not completed yet or failed or skipped
     completed_set = set(topics.get("completed", []))
     all_days = [m.get("day") for m in candidate.get("missions", []) if m.get("day")]
     recommended = [d for d in all_days if d not in completed_set]
+
+    # build interview strategy
+    strategy = {
+        "strong_focus": "Probe architectural depth, edge cases, and design tradeoffs.",
+        "challenging_focus": "Assess practical implementation clarity and debugging capability.",
+        "weak_or_skipped_focus": "Validate fundamental concepts and correct potential misconceptions.",
+        "initial_difficulty": "advanced" if member.get("yearsExperience", 0) >= 5 else "intermediate" if member.get("yearsExperience", 0) >= 2 else "beginner"
+    }
 
     profile = {
         "candidate_id": member.get("id"),
@@ -56,7 +64,9 @@ def build_profile(candidate: Dict[str, Any]) -> Dict[str, Any]:
         "challenging_topics": sorted(list(set(challenging))),
         "skipped_topics": sorted(list(set(topics.get("skipped", [])))),
         "completed_topics": sorted(list(set(topics.get("completed", [])))),
-        "recommended_topics": sorted(list(set(recommended)))
+        "recommended_topics": sorted(list(set(recommended))),
+        "strategy": strategy,
     }
 
     return profile
+
